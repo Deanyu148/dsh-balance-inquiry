@@ -223,6 +223,7 @@ node tools\verify-balance-install.cjs       # 装机校验：包能解析 + 文�
 dsh-balance-inquiry/
 ├── package.json        # dsh.bundle.patch + dsh.client.platform = web
 ├── cordis.patch.yml    # 插入 Loader 条目
+├── CHANGELOG.md
 ├── icon.svg
 ├── LICENSE             # MIT
 ├── locale/{zh,en}.json # 文案（同一份也内联在 client.js 里）
@@ -234,3 +235,5 @@ dsh-balance-inquiry/
     ├── index.d.ts
     └── client.js       # 全部功能：侧边栏条目 + 设置页 + 查询引擎 + 代理优先 / 直连回落
 ```
+
+版本变更见 [`CHANGELOG.md`](./CHANGELOG.md)。
