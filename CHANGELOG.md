@@ -2,6 +2,10 @@
 
 ## 0.3.0
 
+- 发布到 npm 官方源：<https://www.npmjs.com/package/dsh-balance-inquiry>
+  （`npm i dsh-balance-inquiry` / `pnpm add dsh-balance-inquiry`），
+  `package.json` 加 `publishConfig`（registry 固定为官方源、`access: public`）；
+  profile 里的依赖规格也随之从 GitHub 规格改回 npm 版本规格 `^0.3.0`。
 - 新增 **8 家编程套餐（Token Plan / Coding Plan）**的用量查询：Kimi For Coding、智谱 GLM、
   智谱 GLM 团队版、MiniMax、ZenMux、火山方舟（Agent / Coding Plan）、OpenCode Go、Command Code；
   时间窗口统一归一为 5 小时 / 周 / 月，按百分比显示，剩余不足 10% 时变黄。
@@ -10,10 +14,8 @@
   旧存储键（`dsh-quota:config` / `dsh-quota:last-reading`）会在首次读取时自动迁移。
 - 侧边栏 tooltip 增加每个时间窗口的重置时间；设置页在选「智谱 GLM 团队版」时显示组织 / 项目 ID，
   选「火山方舟」时显示 AccessKey ID / SecretAccessKey。
-- 安装方式补充：新增 `tools/register-profile-bundle.cjs`（用 pnpm 装完后把包名登记进
-  `dsh.profile.bundles`，pnpm 自己不会登记），README 增加「用 pnpm 安装」章节
-  （`pnpm add github:Deanyu148/dsh-balance-inquiry#v0.3.0`）；profile 里的依赖规格由裸版本号
-  改为 GitHub 规格，否则在插件发布到 npm 之前，任何一次 `pnpm install` 都会 404。
+- 安装方式补充：新增 `tools/register-profile-bundle.cjs`（用 pnpm / npm 装完后把包名登记进
+  `dsh.profile.bundles`，包管理器自己不会登记），README 增加「从 npm 安装」章节。
 
 ## 0.2.1
 

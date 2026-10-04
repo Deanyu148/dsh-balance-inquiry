@@ -7,6 +7,10 @@
   "types": "lib/index.d.ts",
   "author": "Deanyu148",
   "license": "MIT",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Deanyu148/dsh-balance-inquiry.git"

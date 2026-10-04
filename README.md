@@ -1,12 +1,17 @@
 # dsh-balance-inquiry
 
+已发布到 npm：[`dsh-balance-inquiry`](https://www.npmjs.com/package/dsh-balance-inquiry)
+（`npm i dsh-balance-inquiry` / `pnpm add dsh-balance-inquiry`）。
+
 在 DSH 左侧边栏底部、「上下文洞察」的**上面**加一行按钮：
 
 ```
 💰 剩余额度：12.34 ￥
 ```
 
-![侧边栏与设置页](docs/screenshot.png)
+![主页](docs/screenshot-1.png)
+![设置页](docs/screenshot-2.png)
+
 
 - 支持 New API（one-api / new-api 系）、DeepSeek 官方、StepFun、SiliconFlow（国内 / 国际）、
   OpenRouter、Novita AI 六类**原生余额接口**，以及**自定义用量脚本**
@@ -26,50 +31,10 @@
 
 ## 安装
 
-两种方式任选一种，都是装进 profile `E:\.dsh\profiles\desktop`（换成别的 profile 目录即可）。
-
-### 方式一：pnpm（和插件市场同一套机制）
-
 ```powershell
-cd E:\.dsh\profiles\desktop
-pnpm add github:Deanyu148/dsh-balance-inquiry#v0.3.0
-node E:\文档\deepseek-harness\default-workspace\dsh-balance-inquiry\tools\register-profile-bundle.cjs
+dsh plugin --profile desktop add dsh-balance-inquiry
 ```
 
-- pnpm 只负责把包装进 `node_modules` 并写 `dependencies`（写进去的是
-  `"dsh-balance-inquiry": "github:Deanyu148/dsh-balance-inquiry#v0.3.0"`）；
-  而 DSH 到底加载哪些插件是看 `dsh.profile.bundles` ⇒ 所以还要跑一次
-  `register-profile-bundle.cjs` 登记它（幂等，只改这一个条目，改前备份成
-  `package.json.bak-dsh-balance-inquiry`）。插件市场 `dshmarket` 安装时也会自动登记，命令行 pnpm 不会。
-- 本插件**还没有发布到 npm**，所以上面用的是 `github:` 规格
-  （`pnpm add dsh-balance-inquiry@0.3.0` 现在会 404）。发布到 npm 后两种规格都能用，
-  但 bundles 条目一样要登记。
-- 需要 `git` 和网络；GitHub 走不通时先配好代理，例如
-  `git config --global http.https://github.com.proxy http://127.0.0.1:7897`。
-
-### 方式二：安装脚本（不需要 pnpm）
-
-```powershell
-git clone https://github.com/Deanyu148/dsh-balance-inquiry.git
-cd dsh-balance-inquiry
-node tools\install-balance-plugin.cjs            # 默认装进 E:\.dsh\profiles\desktop
-node tools\install-balance-plugin.cjs D:\.dsh\profiles\web   # 也可以指定别的 profile 目录
-```
-
-装完后 profile 里会多出三样东西：
-
-- 包目录：`<profile>\node_modules\dsh-balance-inquiry\`
-- profile `package.json` 的 `dependencies` 里加一条
-  `"dsh-balance-inquiry": "github:Deanyu148/dsh-balance-inquiry#v0.3.0"`
-  （写 GitHub 规格而不是裸版本号 `"0.3.0"`，否则插件发布到 npm 之前，
-  以后任何一次 `pnpm install` —— 包括插件市场的操作 —— 都会因为解析不到这个包名而 404）
-- 同文件 `dsh.profile.bundles` 里加一条 `dsh-balance-inquiry`（排在 `dsh-context` 后面），
-  包内 `cordis.patch.yml` 再往 Loader 插入 `- id: dsh-balance-inquiry / name: dsh-balance-inquiry`
-
-安装脚本是**幂等**的：重复执行只覆盖包目录、补齐清单里缺的条目（改清单前会先备份成
-`package.json.bak-dsh-balance-inquiry`），并顺手清掉改名前的 `dsh-quota` 残留
-（依赖声明、bundles 条目、`node_modules\dsh-quota`）。它也只会复制运行需要的文件，不带 `tools\`。
-清单里若已经是 `file:`/`link:`/`workspace:` 这类本地指向，脚本不会覆盖。
 
 > profile 的依赖列表和 bundles 是**启动时**读取的，所以装好后要重启 DSH 桌面端
 > （Web 版则重启 `dsh web`）。重启后侧边栏底部就会多出这一行。
