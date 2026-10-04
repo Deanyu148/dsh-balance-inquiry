@@ -62,6 +62,7 @@
   "settings.transport.unknown": "Transport: no request sent yet",
   "settings.status.loading": "querying…",
   "settings.status.unconfigured": "no access token yet",
+  "settings.status.unconfigured.endpoint": "no endpoint yet",
   "settings.status.ready": "balance {amount} | used {used} | total {total} | {percent}% left",
   "settings.status.ready.short": "balance {amount}",
   "settings.status.error": "balance unavailable: {message}",

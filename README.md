@@ -43,15 +43,20 @@ dsh plugin --profile desktop add dsh-balance-inquiry
 
 打开 **设置 → 余额查询**：
 
+> 插件**出厂不预设任何站点**：接口地址与官网地址都是空的，也不会自动去查任何第三方服务。
+> 第一次使用请自己填接口地址和访问令牌；两个地址都为空时，侧边栏按钮只刷新、不跳转。
+> 升级到 0.3.2 时，如果地址还停留在旧版本的出厂预置值（`https://apicdn.cottonapi.cloud` /
+> `https://cottonapi.cloud`），会被视为「没填过」而清空；自己填过的地址一律保留。
+
 | 字段 | 说明 |
 | --- | --- |
 | 查询方式 | `自动识别（按地址判断）`、`New API / One API`、`DeepSeek 官方`、`阶跃星辰 StepFun`、`SiliconFlow（国内/国际）`、`OpenRouter`、`Novita AI`、`自定义脚本`，以及 8 个 `Token Plan · <厂商>` 编程套餐 |
-| 接口地址 | 例如 `https://api.example.com`，末尾不要带 `/`；选原生供应商时自动隐藏（用官方地址）；ZenMux 用它作为用量端点；火山方舟用它推断区域（形如 `https://ark.cn-beijing.volces.com/api/plan/v3`，可留空） |
+| 接口地址 | 例如 `https://api.example.com`，末尾不要带 `/`；**默认为空**，不填就不查；选原生供应商时自动隐藏（用官方地址）；ZenMux 用它作为用量端点；火山方舟用它推断区域（形如 `https://ark.cn-beijing.volces.com/api/plan/v3`，可留空） |
 | 访问令牌 | New API 的「系统访问令牌」（**不是** `sk-` 开头的 API Key），作为 `Authorization: Bearer …` 发送；编程套餐填对应厂商的控制台令牌 |
 | 用户 ID | 作为 `New-Api-User` 请求头发送，部分站点必填 |
 | 组织 ID / 项目 ID | 选「智谱 GLM 团队版」时出现，分别作为 `bigmodel-organization` / `bigmodel-project` 请求头发送 |
 | AccessKey ID / SecretAccessKey | 选「火山方舟」时出现，用于 OpenAPI 签名（不是推理用的 API Key） |
-| 官网地址 | 点击侧边栏按钮打开的网址；默认 `https://cottonapi.cloud`，留空则改用接口地址 |
+| 官网地址 | 点击侧边栏按钮打开的网址；**默认为空**，留空则改用接口地址；两者都空时按钮只刷新不跳转 |
 | 自动刷新间隔 | **分钟**，0 = 不自动查询；默认 5 分钟 |
 | 请求超时 | 秒，2–30，默认 10 |
 | 额度换算比例 | 1 ￥ 等于多少 quota，New API 默认 500000 |

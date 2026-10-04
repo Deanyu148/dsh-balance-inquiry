@@ -1,5 +1,24 @@
 # 更新日志
 
+## 0.3.2
+
+- **出厂不再预设任何站点**：`baseUrl` / `websiteUrl` 的默认值改为空，不再预置
+  `https://apicdn.cottonapi.cloud` 与 `https://cottonapi.cloud`。没填地址就不发任何请求，
+  侧边栏显示「剩余额度：未配置」，设置页状态会区分「尚未填写接口地址」与「尚未填写访问令牌」
+  （新增文案键 `settings.status.unconfigured.endpoint`）。
+- 一次性迁移：升级后若地址仍等于旧的出厂预置值（说明用户从没改过），会被视为「没填过」清空；
+  用户自己填过的地址一律保留。
+- 地址与访问令牌都为空时，侧边栏按钮只刷新、不再跳到 `#`；`queryOnce` 对空地址返回
+  `Endpoint is empty` 而不是打到 DSH 自己的源。
+- 自测断言 212 → 223 项（新增「全新安装」「旧出厂地址失效」「用户地址保留」三组场景）。
+
+## 0.3.1
+
+- 纯文档版本（代码与 0.3.0 一致）：把安装说明改成官方命令
+  `dsh plugin --profile desktop add dsh-balance-inquiry`（它会在 pnpm 结束后自动把声明了
+  `dsh.bundle` 的新包登记进 `dsh.profile.bundles`），换成两张新截图。
+- `files` 增加 `docs/*.png` 与 `CHANGELOG.md`，让 npm 页面上 README 里的截图能正常显示。
+
 ## 0.3.0
 
 - 发布到 npm 官方源：<https://www.npmjs.com/package/dsh-balance-inquiry>

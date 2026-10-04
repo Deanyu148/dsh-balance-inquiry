@@ -885,6 +885,60 @@ async function main() {
 	check("未配置时不发请求", emptyCalls.length === 0, emptyCalls.length);
 	check("设置页状态 = 尚未填写访问令牌", has(textOf(pageTree(emptyEnv)), "尚未填写访问令牌"));
 	check("未配置时官网按钮仍指向官网", propsOf(allTags(emptyEntry, "a")[0]).href === "https://example.com", propsOf(allTags(emptyEntry, "a")[0]).href);
+
+	section("9d. 全新安装：出厂不预设任何地址");
+	const freshCalls = [];
+	const freshEnv = bootstrap({
+		storage: {},
+		fetch: async (url) => {
+			freshCalls.push(String(url));
+			return json(newApiBody());
+		}
+	});
+	await tick(60);
+	const freshEntry = entryTree(freshEnv);
+	check("文案 = 剩余额度：未配置", textOf(firstByClass(freshEntry, "dsh-balance-inquiry-entry-label")) === "剩余额度：未配置", textOf(firstByClass(freshEntry, "dsh-balance-inquiry-entry-label")));
+	check("没地址没令牌时不发请求", freshCalls.length === 0, freshCalls.length);
+	check("没网址可打开（href = #）", propsOf(allTags(freshEntry, "a")[0]).href === "#", propsOf(allTags(freshEntry, "a")[0]).href);
+	const freshPage = pageTree(freshEnv);
+	check("接口地址出厂为空", propsOf(fieldOf(freshPage, "接口地址")).value === "", JSON.stringify(propsOf(fieldOf(freshPage, "接口地址")).value));
+	check("官网地址出厂为空", propsOf(fieldOf(freshPage, "官网地址")).value === "", JSON.stringify(propsOf(fieldOf(freshPage, "官网地址")).value));
+	check("设置页状态 = 尚未填写接口地址", has(textOf(freshPage), "尚未填写接口地址"), textOf(allByClass(freshPage, "dsh-balance-inquiry-status")[0]));
+
+	section("9e. 旧出厂地址（棉花云）不再生效");
+	const legacyDefaultCalls = [];
+	const legacyDefaultEnv = bootstrap({
+		storage: {
+			"dsh-balance-inquiry:config": JSON.stringify({ provider: "auto", baseUrl: "https://apicdn.cottonapi.cloud", websiteUrl: "https://cottonapi.cloud", accessToken: "sk-legacy", autoQueryInterval: 0 })
+		},
+		fetch: async (url) => {
+			legacyDefaultCalls.push(String(url));
+			return json(newApiBody());
+		}
+	});
+	await tick(60);
+	const legacyDefaultPage = pageTree(legacyDefaultEnv);
+	check(
+		"旧出厂地址被清空（视为未配置）",
+		propsOf(fieldOf(legacyDefaultPage, "接口地址")).value === "" && propsOf(fieldOf(legacyDefaultPage, "官网地址")).value === "",
+		JSON.stringify([propsOf(fieldOf(legacyDefaultPage, "接口地址")).value, propsOf(fieldOf(legacyDefaultPage, "官网地址")).value])
+	);
+	check("清空后不发请求", legacyDefaultCalls.length === 0, legacyDefaultCalls.length);
+
+	section("9f. 用户自己填过的地址不受迁移影响");
+	const customAddrCalls = [];
+	const customAddrEnv = bootstrap({
+		storage: {
+			"dsh-balance-inquiry:config": JSON.stringify({ provider: "auto", baseUrl: "https://api.cottonapi.cloud", websiteUrl: "https://api.cottonapi.cloud", accessToken: "sk-mine", autoQueryInterval: 0 })
+		},
+		fetch: async (url) => {
+			customAddrCalls.push(String(url));
+			return json(newApiBody());
+		}
+	});
+	await tick(60);
+	check("用户填的地址原样保留", propsOf(fieldOf(pageTree(customAddrEnv), "接口地址")).value === "https://api.cottonapi.cloud", propsOf(fieldOf(pageTree(customAddrEnv), "接口地址")).value);
+	check("照常发出请求", customAddrCalls.length === 1, customAddrCalls.length);
 	//#endregion
 
 	//#region 10. 宿主代理（cc-switch 同款能力：请求由宿主进程发出，绕开浏览器 CORS）
@@ -964,6 +1018,11 @@ async function main() {
 	section("11a. 自测工具：SHA-256 / HMAC-SHA256 / 火山签名（与 node:crypto 对拍）");
 	const internals = (baseEnv.moduleExports && baseEnv.moduleExports.__internals) || {};
 	check("导出 __internals（供自测的纯函数）", Boolean(internals.sha256Hex) && Boolean(internals.hmacSha256Hex) && Boolean(internals.volSign) && Boolean(internals.parseZhipuTiers));
+	check(
+		"出厂默认配置不含任何站点地址",
+		Boolean(internals.defaultConfig) && internals.defaultConfig.baseUrl === "" && internals.defaultConfig.websiteUrl === "",
+		JSON.stringify(internals.defaultConfig && { baseUrl: internals.defaultConfig.baseUrl, websiteUrl: internals.defaultConfig.websiteUrl })
+	);
 	check(
 		"SHA-256('abc') RFC 向量",
 		internals.sha256Hex && internals.sha256Hex("abc") === "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",

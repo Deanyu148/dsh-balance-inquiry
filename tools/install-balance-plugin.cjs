@@ -95,10 +95,18 @@ if (currentDep !== wantedDep) {
 	manifest.dependencies[name] = wantedDep;
 	added.push("dependencies." + name + " = " + wantedDep + (currentDep === undefined ? "" : "（原 " + currentDep + "）"));
 }
-if (!manifest.dsh.profile.bundles.includes(name)) {
-	const anchor = manifest.dsh.profile.bundles.indexOf("dsh-context");
-	manifest.dsh.profile.bundles.splice(anchor === -1 ? manifest.dsh.profile.bundles.length : anchor + 1, 0, name);
-	added.push("dsh.profile.bundles += " + name);
+// bundles 里的位置固定成「紧跟 dsh-context」（不影响其它插件的相对顺序）；被 dshmarket/pnpm
+// 挪到别处时自愈，保证侧边栏那一行的加载顺序稳定。
+{
+	const bundles = manifest.dsh.profile.bundles;
+	const rest = bundles.filter((item) => item !== name);
+	const anchor = rest.indexOf("dsh-context");
+	const next = rest.slice();
+	next.splice(anchor === -1 ? next.length : anchor + 1, 0, name);
+	if (JSON.stringify(next) !== JSON.stringify(bundles)) {
+		manifest.dsh.profile.bundles = next;
+		added.push(bundles.includes(name) ? "dsh.profile.bundles 位置归位（紧跟 dsh-context）" : "dsh.profile.bundles += " + name);
+	}
 }
 if (added.length > 0) {
 	const backup = path.join(profileDir, "package.json.bak-dsh-balance-inquiry");

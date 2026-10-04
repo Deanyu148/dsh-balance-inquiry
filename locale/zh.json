@@ -62,6 +62,7 @@
   "settings.transport.unknown": "查询通道：尚未发起请求",
   "settings.status.loading": "查询中…",
   "settings.status.unconfigured": "尚未填写访问令牌",
+  "settings.status.unconfigured.endpoint": "尚未填写接口地址",
   "settings.status.ready": "余额 {amount} ｜ 已用 {used} ｜ 总额 {total} ｜ 剩余 {percent}%",
   "settings.status.ready.short": "余额 {amount}",
   "settings.status.error": "额度没查到：{message}",
