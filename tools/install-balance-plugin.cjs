@@ -13,10 +13,14 @@ const path = require("node:path");
 
 /** 改名前的包名（安装脚本会清理它）。 */
 const LEGACY_NAME = "dsh-quota";
+/** GitHub 仓库（依赖规格与 README 里的 pnpm 命令都用它）。 */
+const REPO = "Deanyu148/dsh-balance-inquiry";
 
 const src = path.resolve(__dirname, "..");
 const pkg = JSON.parse(fs.readFileSync(path.join(src, "package.json"), "utf8"));
 const name = pkg.name;
+/** pnpm 能直接解析的依赖规格（插件未发布到 npm，不能写裸版本号）。 */
+const GIT_SPEC = "github:" + REPO + "#v" + pkg.version;
 const profileDir = path.resolve(process.argv[2] || process.env.DSH_PROFILE_DIR || "E:\\.dsh\\profiles\\desktop");
 const dst = path.join(profileDir, "node_modules", name);
 const manifestPath = path.join(profileDir, "package.json");
@@ -77,9 +81,16 @@ if (manifest.dsh.profile.bundles.includes(LEGACY_NAME)) {
 	manifest.dsh.profile.bundles = manifest.dsh.profile.bundles.filter((item) => item !== LEGACY_NAME);
 	added.push("bundles -= " + LEGACY_NAME);
 }
-if (manifest.dependencies[name] !== pkg.version) {
-	manifest.dependencies[name] = pkg.version;
-	added.push("dependencies." + name + " = " + pkg.version);
+// 依赖规格必须是 pnpm 能解析出来的：本插件没有发布到 npm，写裸版本号（"0.3.0"）
+// 会让以后任何一次 `pnpm install` / 插件市场操作都 404（pnpm 会重新解析整份清单）。
+// 所以默认写成 GitHub 规格（等价于 pnpm add github:Deanyu148/dsh-balance-inquiry#v0.3.0）；
+// 如果清单里已经是 file:/link:/workspace: 这类本地指向，就原样保留，不覆盖用户的写法。
+const currentDep = manifest.dependencies[name];
+const isLocalDep = typeof currentDep === "string" && /^(file:|link:|workspace:|portal:)/.test(currentDep);
+const wantedDep = isLocalDep ? currentDep : GIT_SPEC;
+if (currentDep !== wantedDep) {
+	manifest.dependencies[name] = wantedDep;
+	added.push("dependencies." + name + " = " + wantedDep + (currentDep === undefined ? "" : "（原 " + currentDep + "）"));
 }
 if (!manifest.dsh.profile.bundles.includes(name)) {
 	const anchor = manifest.dsh.profile.bundles.indexOf("dsh-context");
@@ -116,3 +127,5 @@ console.log("清单改动 : " + (added.length ? added.join("；") : "无需改�
 console.log("bundles  : " + manifest.dsh.profile.bundles.join(", "));
 console.log("");
 console.log("下一步：完全退出并重新打开 DeepSeek Harness（profile 的 bundles 只在启动时读取）。");
+console.log("想改用 pnpm 管理也可以：在 profile 目录里 pnpm add " + GIT_SPEC + "，");
+console.log("然后 node tools/register-profile-bundle.cjs " + profileDir + " 登记 bundles 条目（pnpm 不会自动登记）。");

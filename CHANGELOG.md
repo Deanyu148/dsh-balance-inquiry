@@ -10,6 +10,10 @@
   旧存储键（`dsh-quota:config` / `dsh-quota:last-reading`）会在首次读取时自动迁移。
 - 侧边栏 tooltip 增加每个时间窗口的重置时间；设置页在选「智谱 GLM 团队版」时显示组织 / 项目 ID，
   选「火山方舟」时显示 AccessKey ID / SecretAccessKey。
+- 安装方式补充：新增 `tools/register-profile-bundle.cjs`（用 pnpm 装完后把包名登记进
+  `dsh.profile.bundles`，pnpm 自己不会登记），README 增加「用 pnpm 安装」章节
+  （`pnpm add github:Deanyu148/dsh-balance-inquiry#v0.3.0`）；profile 里的依赖规格由裸版本号
+  改为 GitHub 规格，否则在插件发布到 npm 之前，任何一次 `pnpm install` 都会 404。
 
 ## 0.2.1
 

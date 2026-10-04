@@ -26,6 +26,29 @@
 
 ## 安装
 
+两种方式任选一种，都是装进 profile `E:\.dsh\profiles\desktop`（换成别的 profile 目录即可）。
+
+### 方式一：pnpm（和插件市场同一套机制）
+
+```powershell
+cd E:\.dsh\profiles\desktop
+pnpm add github:Deanyu148/dsh-balance-inquiry#v0.3.0
+node E:\文档\deepseek-harness\default-workspace\dsh-balance-inquiry\tools\register-profile-bundle.cjs
+```
+
+- pnpm 只负责把包装进 `node_modules` 并写 `dependencies`（写进去的是
+  `"dsh-balance-inquiry": "github:Deanyu148/dsh-balance-inquiry#v0.3.0"`）；
+  而 DSH 到底加载哪些插件是看 `dsh.profile.bundles` ⇒ 所以还要跑一次
+  `register-profile-bundle.cjs` 登记它（幂等，只改这一个条目，改前备份成
+  `package.json.bak-dsh-balance-inquiry`）。插件市场 `dshmarket` 安装时也会自动登记，命令行 pnpm 不会。
+- 本插件**还没有发布到 npm**，所以上面用的是 `github:` 规格
+  （`pnpm add dsh-balance-inquiry@0.3.0` 现在会 404）。发布到 npm 后两种规格都能用，
+  但 bundles 条目一样要登记。
+- 需要 `git` 和网络；GitHub 走不通时先配好代理，例如
+  `git config --global http.https://github.com.proxy http://127.0.0.1:7897`。
+
+### 方式二：安装脚本（不需要 pnpm）
+
 ```powershell
 git clone https://github.com/Deanyu148/dsh-balance-inquiry.git
 cd dsh-balance-inquiry
@@ -36,13 +59,17 @@ node tools\install-balance-plugin.cjs D:\.dsh\profiles\web   # 也可以指定�
 装完后 profile 里会多出三样东西：
 
 - 包目录：`<profile>\node_modules\dsh-balance-inquiry\`
-- profile `package.json` 的 `dependencies` 里加一条 `"dsh-balance-inquiry": "0.3.0"`
+- profile `package.json` 的 `dependencies` 里加一条
+  `"dsh-balance-inquiry": "github:Deanyu148/dsh-balance-inquiry#v0.3.0"`
+  （写 GitHub 规格而不是裸版本号 `"0.3.0"`，否则插件发布到 npm 之前，
+  以后任何一次 `pnpm install` —— 包括插件市场的操作 —— 都会因为解析不到这个包名而 404）
 - 同文件 `dsh.profile.bundles` 里加一条 `dsh-balance-inquiry`（排在 `dsh-context` 后面），
   包内 `cordis.patch.yml` 再往 Loader 插入 `- id: dsh-balance-inquiry / name: dsh-balance-inquiry`
 
 安装脚本是**幂等**的：重复执行只覆盖包目录、补齐清单里缺的条目（改清单前会先备份成
 `package.json.bak-dsh-balance-inquiry`），并顺手清掉改名前的 `dsh-quota` 残留
 （依赖声明、bundles 条目、`node_modules\dsh-quota`）。它也只会复制运行需要的文件，不带 `tools\`。
+清单里若已经是 `file:`/`link:`/`workspace:` 这类本地指向，脚本不会覆盖。
 
 > profile 的依赖列表和 bundles 是**启动时**读取的，所以装好后要重启 DSH 桌面端
 > （Web 版则重启 `dsh web`）。重启后侧边栏底部就会多出这一行。
@@ -233,6 +260,12 @@ dsh-balance-inquiry/
 ├── README.md
 ├── NOTICE.md           # cc-switch 的引用说明 + 原作者版权与 MIT 许可全文
 ├── tools/              # 安装 / 自测脚本（不会随安装复制进 profile）
+│   ├── install-balance-plugin.cjs      # 方式二：复制包目录 + 补清单 + 清 dsh-quota 残留
+│   ├── register-profile-bundle.cjs     # 方式一：只把包名登记进 dsh.profile.bundles
+│   ├── balance-smoke-test.cjs          # 客户端 bundle 自测（212 项断言）
+│   ├── balance-host-proxy-test.cjs     # 宿主代理自测（22 项断言）
+│   ├── verify-balance-install.cjs      # 装机校验（源目录 / 装机目录逐文件比对）
+│   └── sync-balance-locale.cjs         # 把 client.js 里的文案同步到 locale/*.json
 └── lib/
     ├── index.js        # 宿主半边：/plugins/dsh-balance-inquiry/proxy 代理路由（Node 侧发请求，无 CORS）
     ├── index.d.ts
