@@ -1,0 +1,77 @@
+{
+  "name": "dsh-balance-inquiry",
+  "version": "0.3.0",
+  "description": "在左侧边栏底部显示 New API 剩余额度与各家编程套餐（Token Plan / Coding Plan）用量，可点击进入官网，官网地址可在设置中修改",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "author": "Deanyu148",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Deanyu148/dsh-balance-inquiry.git"
+  },
+  "homepage": "https://github.com/Deanyu148/dsh-balance-inquiry#readme",
+  "bugs": {
+    "url": "https://github.com/Deanyu148/dsh-balance-inquiry/issues"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "plugin",
+    "balance",
+    "quota",
+    "new-api",
+    "coding-plan"
+  ],
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "icon.svg",
+    "LICENSE",
+    "locale/*.json",
+    "lib/client.js",
+    "lib/index.js",
+    "lib/index.d.ts",
+    "cordis.patch.yml",
+    "README.md",
+    "NOTICE.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-sidebar-right"
+      ]
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.2",
+    "react": "^18.3.1"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  }
+}

@@ -1,0 +1,236 @@
+# dsh-balance-inquiry
+
+在 DSH 左侧边栏底部、「上下文洞察」的**上面**加一行按钮：
+
+```
+💰 剩余额度：12.34 ￥
+```
+
+- 支持 New API（one-api / new-api 系）、DeepSeek 官方、StepFun、SiliconFlow（国内 / 国际）、
+  OpenRouter、Novita AI 六类**原生余额接口**，以及**自定义用量脚本**
+  （`({ request: {…}, extractor: function (response) {…} })`，支持
+  `{{baseUrl}}` / `{{apiKey}}` / `{{accessToken}}` / `{{userId}}` 占位符）。
+- 支持 **8 家编程套餐（Token Plan / Coding Plan）**的用量查询：Kimi For Coding、智谱 GLM、
+  智谱 GLM 团队版、MiniMax、ZenMux、火山方舟（Agent / Coding Plan）、OpenCode Go、Command Code；
+  显示每个时间窗口（5 小时 / 周 / 月）的**已用百分比与剩余百分比**，剩余不足 10% 时变黄。
+- New API 默认 `GET {baseUrl}/api/user/self`，显示值 = `data.quota ÷ 换算比例`
+  （默认 500000，也就是 1 ￥ = 500000 quota）。
+- 点击这一行打开**官网地址**（在设置里可改；留空则用接口地址）。
+- 多套餐 / 多币种支持：侧边栏显示额度最少（最紧急）的那一项，鼠标悬停的 tooltip 里列出其余项。
+- **keep-last-good**：瞬时失败（网络错误 / 超时 / 5xx / 429）时，10 分钟内继续展示上次成功的余额，
+  tooltip 标注「上次成功：…」；鉴权失败等确定性失败立即透出并清掉旧值，避免显示过期额度。
+- 余额只在**为 0** 时变红；只有按百分比的档位才做「剩余 < 10%」的黄色预警。
+- 请求默认由 **DSH 宿主进程**发出，不受浏览器跨域限制；宿主通道不可用时自动回落浏览器直连。
+
+## 安装
+
+```powershell
+git clone https://github.com/Deanyu148/dsh-balance-inquiry.git
+cd dsh-balance-inquiry
+node tools\install-balance-plugin.cjs            # 默认装进 E:\.dsh\profiles\desktop
+node tools\install-balance-plugin.cjs D:\.dsh\profiles\web   # 也可以指定别的 profile 目录
+```
+
+装完后 profile 里会多出三样东西：
+
+- 包目录：`<profile>\node_modules\dsh-balance-inquiry\`
+- profile `package.json` 的 `dependencies` 里加一条 `"dsh-balance-inquiry": "0.3.0"`
+- 同文件 `dsh.profile.bundles` 里加一条 `dsh-balance-inquiry`（排在 `dsh-context` 后面），
+  包内 `cordis.patch.yml` 再往 Loader 插入 `- id: dsh-balance-inquiry / name: dsh-balance-inquiry`
+
+安装脚本是**幂等**的：重复执行只覆盖包目录、补齐清单里缺的条目（改清单前会先备份成
+`package.json.bak-dsh-balance-inquiry`），并顺手清掉改名前的 `dsh-quota` 残留
+（依赖声明、bundles 条目、`node_modules\dsh-quota`）。它也只会复制运行需要的文件，不带 `tools\`。
+
+> profile 的依赖列表和 bundles 是**启动时**读取的，所以装好后要重启 DSH 桌面端
+> （Web 版则重启 `dsh web`）。重启后侧边栏底部就会多出这一行。
+
+## 配置
+
+打开 **设置 → 余额查询**：
+
+| 字段 | 说明 |
+| --- | --- |
+| 查询方式 | `自动识别（按地址判断）`、`New API / One API`、`DeepSeek 官方`、`阶跃星辰 StepFun`、`SiliconFlow（国内/国际）`、`OpenRouter`、`Novita AI`、`自定义脚本`，以及 8 个 `Token Plan · <厂商>` 编程套餐 |
+| 接口地址 | 例如 `https://api.example.com`，末尾不要带 `/`；选原生供应商时自动隐藏（用官方地址）；ZenMux 用它作为用量端点；火山方舟用它推断区域（形如 `https://ark.cn-beijing.volces.com/api/plan/v3`，可留空） |
+| 访问令牌 | New API 的「系统访问令牌」（**不是** `sk-` 开头的 API Key），作为 `Authorization: Bearer …` 发送；编程套餐填对应厂商的控制台令牌 |
+| 用户 ID | 作为 `New-Api-User` 请求头发送，部分站点必填 |
+| 组织 ID / 项目 ID | 选「智谱 GLM 团队版」时出现，分别作为 `bigmodel-organization` / `bigmodel-project` 请求头发送 |
+| AccessKey ID / SecretAccessKey | 选「火山方舟」时出现，用于 OpenAPI 签名（不是推理用的 API Key） |
+| 官网地址 | 点击侧边栏按钮打开的网址；默认 `https://cottonapi.cloud`，留空则改用接口地址 |
+| 自动刷新间隔 | **分钟**，0 = 不自动查询；默认 5 分钟 |
+| 请求超时 | 秒，2–30，默认 10 |
+| 额度换算比例 | 1 ￥ 等于多少 quota，New API 默认 500000 |
+| 货币单位 | New API 场景显示用的单位，默认 `CNY`（界面上显示为 ￥） |
+| 自定义脚本 | 选「自定义脚本」时出现，旁边有「填入 New API 模板 / 通用模板」按钮 |
+
+配置存在渲染进程的 `localStorage`（键 `dsh-balance-inquiry:config`），最近一次查询结果缓存在
+`dsh-balance-inquiry:last-reading`，所以重启后按钮会立刻显示上次的余额，不用等第一次请求。
+旧版本的配置（只有 `refreshSeconds`、没有 `provider`）会在读取时自动迁移；改名前的存储键
+（`dsh-quota:config` / `dsh-quota:last-reading`）也会在第一次读取时自动搬到新键上。
+
+## 各供应商的端点
+
+| 查询方式 | 端点 | 取值 |
+| --- | --- | --- |
+| New API | `GET {baseUrl}/api/user/self` | `data.quota ÷ 换算比例` |
+| DeepSeek | `GET https://api.deepseek.com/user/balance` | `balance_infos[].total_balance`（每个币种一条） |
+| StepFun | `GET https://api.stepfun.com/v1/accounts` | `balance`（CNY） |
+| SiliconFlow | `GET https://api.siliconflow.{cn,com}/v1/user/info` | `data.totalBalance` |
+| OpenRouter | `GET https://openrouter.ai/api/v1/credits` | `total_credits - total_usage` |
+| Novita AI | `GET https://api.novita.ai/v3/user/balance` | `availableBalance ÷ 10000`（USD） |
+
+响应解析、错误文案（`Network error: …` / `Authentication failed (HTTP 401)` /
+`Failed to parse response: …`）、脚本引擎的字段校验与 200 字符错误体预览，都由插件自己实现，
+可以在「设置 → 余额查询」里看到每次查询的具体原因。
+
+## 编程套餐（Token Plan / Coding Plan）
+
+「查询方式」里选 `Token Plan · <厂商>`（也可以选「自动识别」，插件会按接口地址命中对应的厂商）。
+编程套餐没有"余额"这个概念，所以显示的是每个时间窗口的**用量百分比**：侧边栏取最紧急的一项
+（已用最多 / 剩余最少），悬停时列出全部窗口。
+
+| 厂商 | 端点 | 需要填写 |
+| --- | --- | --- |
+| Kimi For Coding | `GET https://api.kimi.com/coding/v1/usages` | 访问令牌 |
+| 智谱 GLM | `GET {open.bigmodel.cn \| api.z.ai}/api/monitor/usage/quota/limit` | 访问令牌（按接口地址判断国内 / 国际站） |
+| 智谱 GLM 团队版 | `GET https://open.bigmodel.cn/api/monitor/usage/quota/limit?type=2` | 访问令牌 + 组织 ID + 项目 ID（不参与自动识别，需手动选） |
+| MiniMax | `GET {api.minimaxi.com \| api.minimax.io}/v1/api/openplatform/coding_plan/remains` | 访问令牌（按接口地址判断国内 / 国际站） |
+| ZenMux | `GET {接口地址}/api/usage` | 访问令牌 + 接口地址（或用 ZenMux 的用量脚本地址） |
+| 火山方舟（Agent / Coding Plan） | `POST https://open.volcengineapi.com/?Action=GetAFPUsage\|GetCodingPlanUsage&Version=2024-01-01` | AccessKey ID + SecretAccessKey（OpenAPI 签名，按接口地址推断区域） |
+| OpenCode Go | `GET https://opencode.ai/zen/go/v1/usage` | 访问令牌 |
+| Command Code | `GET https://api.commandcode.ai/alpha/...`（串行 4 次：whoami → credits → subscriptions → usage/summary） | 访问令牌 |
+
+- 时间窗口统一归一为 **5 小时 / 周 / 月**：Kimi 的 `limits[]`（5 小时）与 `usage`（周），
+  智谱的 `TOKENS_LIMIT` / `CREDIT_LIMIT`（按 `unit` 3 = 5 小时、6 = 周），MiniMax 的
+  `model_remains[]`（`general` 模型的区间 / 周），ZenMux 的 `quota_5_hour` / `quota_7_day`，
+  火山的 `AFPFiveHour` / `AFPWeekly` / `AFPMonthly` + `QuotaUsage[]`，OpenCode Go 的
+  `rolling` / `weekly` / `monthly`，Command Code 的 `windowLimits` + 月度池。
+- 火山方舟会先查 **Agent Plan**，没有活跃订阅时自动回落查 **Coding Plan**，
+  两者都没有时才报「没有找到活跃订阅」。
+- 所有编程套餐请求超时统一 15 秒；鉴权失败（401 / 403 / 签名错误）会把令牌标为失效，
+  并在提示里带上服务端返回的原因。
+- 有一项套餐同时返回美元金额时（ZenMux、Command Code），改用美元金额显示，而不是百分比。
+
+## 自定义用量脚本
+
+「查询方式」选「自定义脚本」后，可以粘贴一段求值后返回对象的脚本，用来适配任何站点：
+
+```js
+({
+  request: {
+    url: "{{baseUrl}}/api/user/self",
+    method: "GET",
+    headers: { "Authorization": "Bearer {{accessToken}}", "New-Api-User": "{{userId}}" }
+  },
+  extractor: function (response) {
+    return {
+      planName: response.data.group || "默认套餐",
+      remaining: response.data.quota / {{rate}},
+      used: response.data.used_quota / {{rate}},
+      total: (response.data.quota + response.data.used_quota) / {{rate}},
+      unit: "CNY"
+    };
+  }
+})
+```
+
+- 占位符：`{{baseUrl}}`、`{{apiKey}}` / `{{accessToken}}`（当前令牌）、`{{userId}}`、`{{rate}}`（换算比例）。
+- `extractor` 可以返回**一项**或**一项数组**（多套餐 / 多币种），字段：
+  `{ planName, remaining, used, total, unit, isValid, invalidMessage }`。
+- 只允许 HTTPS（本机 `http://localhost` 除外）；脚本语法错误、`extractor` 抛错、返回数字等原始值，
+  都会在设置页给出中文原因；`extractor` 返回 `isValid: false` 时按钮上显示为「无效」而不是硬错误。
+- 旁边两个按钮可以一键填入 New API 模板 / 通用模板。
+
+## 查询可能失败的原因
+
+插件默认把请求交给**宿主进程**发出（Node，不受浏览器同源策略约束），但仍可能遇到这些情况：
+
+| 现象 | 原因 | 处理 |
+| --- | --- | --- |
+| `网络错误 Network error: 无法连接 <host>` | 域名解析不了 / 网络不通；或请求走了浏览器直连通道，而目标站没返回 `Access-Control-Allow-Origin` | 完全退出并重开 DSH 让宿主通道生效；确认地址本身可用 |
+| `请求超时 Request failed: timeout after Ns` | 目标站响应慢或不可达 | 把「请求超时」调大（2–30 秒） |
+| `Authentication failed (HTTP 401)` / `无权进行此操作，access token 无效` | 令牌不对：New API 要的是控制台「系统访问令牌」，不是 chat 用的 API Key；有的站点还要「用户 ID」 | 重新复制令牌、补上用户 ID，点「立即查询」 |
+| `Failed to parse response: 缺少字段 …` | 地址指向的不是该供应商的余额接口，或站点字段不同 | 把「查询方式」改成「自定义脚本」，自己写取值规则 |
+| 一直显示「上次成功」的旧余额 | 最近一次是瞬时失败，10 分钟内继续展示上次成功的值 | 看设置页状态行的原因，或点「立即查询」重试 |
+| 设置页底部写「查询通道：浏览器直连」 | 宿主路由没生效（多半是没重启 DSH，或 webserver 被禁用） | 完全退出并重新打开 DSH |
+
+宿主通道的原理：
+
+```
+渲染进程                                   宿主进程（Node，不受 CORS 限制）
+  POST /plugins/dsh-balance-inquiry/proxy   ───────►  dsh-balance-inquiry/lib/index.js
+  { url, method, headers, body,             │  fetch(url, …)
+    timeoutSeconds }                        ▼
+  ◄─────── { ok:true, status, body }     目标站点
+  （同源请求，不经网络，也没有 CORS 问题）
+```
+
+- 路由由宿主半边的 `lib/index.js` 用 `dsh-host-webserver` 注册成 **exact 路由**
+  `/plugins/dsh-balance-inquiry/proxy`（exact 表优先于 `dsh-client-modules` 的 `/plugins/<id>/` 前缀路由）。
+- 桌面端里 `dsh-app://app/plugins/...` 会被 Electron 主进程的 `protocol.handle`
+  **原样转发**给宿主 webserver（方法、自定义头、请求体都会保留，并注入会话 cookie），
+  所以渲染进程只要用相对路径 fetch 即可；Web 版是普通的 http 同源请求。
+- 路由只服务**带会话 cookie 的本机调用**，并拒绝：非 HTTPS 目标（本机 `http://localhost` 除外）、
+  URL 里带用户名密码、内网 / 回环 IP。它不是开放代理。
+- 请求头**原样转发**，所以浏览器禁止设置的头（`User-Agent` 等）写在自定义脚本里也能真的发出去。
+- 宿主路由不存在时（旧宿主、webserver 被禁用），客户端**记住并回落浏览器直连**，
+  功能不会因为宿主侧缺失而不可用。
+- **设置 → 余额查询** 底部会显示当前用的通道：`查询通道：DSH 宿主进程代理（不经过浏览器，无跨域限制）`
+  或 `查询通道：浏览器直连（目标站必须允许跨域，否则会被拦）`。
+
+## 重装 / 恢复
+
+源码目录在 `E:\文档\deepseek-harness\default-workspace\dsh-balance-inquiry\`。如果哪天这一行不见了
+（例如用插件市场装了别的插件，pnpm 清理了 node_modules 里它不认识的目录），重新执行一次即可：
+
+```powershell
+cd E:\文档\deepseek-harness\default-workspace\dsh-balance-inquiry
+node tools\install-balance-plugin.cjs
+```
+
+自测（不需要 DSH 在运行）：
+
+```powershell
+node tools\balance-smoke-test.cjs           # 客户端 bundle：212 项断言
+node tools\balance-host-proxy-test.cjs      # 宿主代理：22 项断言
+node tools\verify-balance-install.cjs       # 装机校验：包能解析 + 文件与源目录一致
+```
+
+- 第一个用一个假的 `window` / `document` / `location` / `fetch` / React 加载 `lib/client.js`，
+  覆盖插槽注册顺序、样式、New API 快乐路径、旧配置迁移、401 / 瞬时失败 / 10 分钟窗口 /
+  HTTP 500 / 200+success:false、六类原生供应商、自定义脚本（占位符、多套餐、8 类错误）、
+  换算比例与颜色规则、轮询间隔、保存与打开官网、未配置、**宿主代理**（请求形状、
+  代理不可用回落直连、代理报告的网络错误 / 超时、查询通道提示），以及**8 家编程套餐**
+  （Kimi 的两个窗口、智谱的个人 / 团队版与窗口归类、MiniMax 国内 / 国际、ZenMux、
+  OpenCode Go 三窗口与 403、火山方舟的签名形状与 AFP → Coding Plan 兜底、Command Code 的四次串行请求）。
+- 第二个起一个**不返回任何 CORS 头**的本机服务当靶子，验证宿主代理确实读得到它的响应
+  （浏览器在这里会失败），并覆盖 cookie 校验、地址白名单、连不上 / 超时语义、超时夹取，
+  以及 `User-Agent` / 自定义头的转发。
+- 第三个校验 profile 清单与已安装文件（防止「改了源码没重装」或「装了旧版本」）。
+
+## 致谢与许可
+
+- 查询功能参考并复刻了开源项目 **cc-switch**：
+  <https://github.com/farion1231/cc-switch>（MIT License，Copyright (c) 2025 Jason Young）。
+  本插件查询功能基于 cc-switch 的余额查询功能实现，原作者版权声明与 MIT 许可全文见
+  [`NOTICE.md`](./NOTICE.md)。
+- 本插件 `dsh-balance-inquiry` 同样以 MIT 许可发布，全文见 [`LICENSE`](./LICENSE)。
+
+## 目录
+
+```
+dsh-balance-inquiry/
+├── package.json        # dsh.bundle.patch + dsh.client.platform = web
+├── cordis.patch.yml    # 插入 Loader 条目
+├── icon.svg
+├── LICENSE             # MIT
+├── locale/{zh,en}.json # 文案（同一份也内联在 client.js 里）
+├── README.md
+├── NOTICE.md           # cc-switch 的引用说明 + 原作者版权与 MIT 许可全文
+├── tools/              # 安装 / 自测脚本（不会随安装复制进 profile）
+└── lib/
+    ├── index.js        # 宿主半边：/plugins/dsh-balance-inquiry/proxy 代理路由（Node 侧发请求，无 CORS）
+    ├── index.d.ts
+    └── client.js       # 全部功能：侧边栏条目 + 设置页 + 查询引擎 + 代理优先 / 直连回落
+```
