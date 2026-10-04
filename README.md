@@ -6,6 +6,8 @@
 💰 剩余额度：12.34 ￥
 ```
 
+![侧边栏与设置页](docs/screenshot.png)
+
 - 支持 New API（one-api / new-api 系）、DeepSeek 官方、StepFun、SiliconFlow（国内 / 国际）、
   OpenRouter、Novita AI 六类**原生余额接口**，以及**自定义用量脚本**
   （`({ request: {…}, extractor: function (response) {…} })`，支持
@@ -224,6 +226,7 @@ dsh-balance-inquiry/
 ├── package.json        # dsh.bundle.patch + dsh.client.platform = web
 ├── cordis.patch.yml    # 插入 Loader 条目
 ├── CHANGELOG.md
+├── docs/screenshot.png # README 顶部的截图
 ├── icon.svg
 ├── LICENSE             # MIT
 ├── locale/{zh,en}.json # 文案（同一份也内联在 client.js 里）
