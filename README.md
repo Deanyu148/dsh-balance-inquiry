@@ -218,6 +218,16 @@ cd E:\文档\deepseek-harness\default-workspace\dsh-balance-inquiry
 node tools\install-balance-plugin.cjs
 ```
 
+用 pnpm 装的（方式一）就重跑一遍同样的命令，把 ref 换成新的 tag 即可升级：
+
+```powershell
+cd E:\.dsh\profiles\desktop
+pnpm add github:Deanyu148/dsh-balance-inquiry#v0.3.0
+```
+
+> pnpm 会把 lockfile 里解析到的 commit 钉住，所以升级时记得改 tag；只跑 `pnpm install`
+> 会继续用 lockfile 里的旧版本。
+
 自测（不需要 DSH 在运行）：
 
 ```powershell
