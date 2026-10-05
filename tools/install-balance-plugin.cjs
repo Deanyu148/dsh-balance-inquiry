@@ -6,20 +6,16 @@
 // 默认 profile：E:\.dsh\profiles\desktop（也可用环境变量 DSH_PROFILE_DIR 指定）
 //
 // 幂等：重复执行只覆盖包目录、并补齐 profile 清单里缺的条目。
-// 另外会清掉改名前的 dsh-quota 残留（依赖声明、bundles 条目、node_modules 目录），
-// 避免 DSH 启动时去加载一个已经不存在的插件。
 const fs = require("node:fs");
 const path = require("node:path");
 
-/** 改名前的包名（安装脚本会清理它）。 */
-const LEGACY_NAME = "dsh-quota";
 /** GitHub 仓库（npm 上取不到时用的备用依赖规格）。 */
 const REPO = "Deanyu148/dsh-balance-inquiry";
 
 const src = path.resolve(__dirname, "..");
 const pkg = JSON.parse(fs.readFileSync(path.join(src, "package.json"), "utf8"));
 const name = pkg.name;
-/** 默认写 npm 上的版本规格（0.3.0 起已发布到官方源，pnpm/npm 能直接解析）。 */
+/** 默认写 npm 上的版本规格（pnpm/npm 能直接解析）。 */
 const NPM_SPEC = "^" + pkg.version;
 /** 包还没发到 npm 时改用仓库规格（pnpm 会走 git，需要能访问 GitHub）。 */
 const GIT_SPEC = "github:" + REPO + "#v" + pkg.version;
@@ -67,7 +63,7 @@ for (const entry of ["package.json"].concat(pkg.files || [])) {
 	}
 }
 
-// 2) 补齐 profile 清单，并清掉改名前的残留条目
+// 2) 补齐 profile 清单
 const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
 manifest.dependencies = manifest.dependencies || {};
 manifest.dsh = manifest.dsh || {};
@@ -75,19 +71,9 @@ manifest.dsh.profile = manifest.dsh.profile || {};
 manifest.dsh.profile.bundles = manifest.dsh.profile.bundles || [];
 
 const added = [];
-if (manifest.dependencies[LEGACY_NAME] !== undefined) {
-	delete manifest.dependencies[LEGACY_NAME];
-	added.push("dependencies -= " + LEGACY_NAME);
-}
-if (manifest.dsh.profile.bundles.includes(LEGACY_NAME)) {
-	manifest.dsh.profile.bundles = manifest.dsh.profile.bundles.filter((item) => item !== LEGACY_NAME);
-	added.push("bundles -= " + LEGACY_NAME);
-}
-// 依赖规格必须是 pnpm 能解析出来的：本插件没有发布到 npm，写裸版本号（"0.3.0"）
-// 会让以后任何一次 `pnpm install` / 插件市场操作都 404（pnpm 会重新解析整份清单）。
-// 所以默认写成 npm 版本规格（等价于 pnpm add dsh-balance-inquiry@^0.3.0）；
-// 包还没发到 npm 的版本可以改成 GIT_SPEC（github:Deanyu148/dsh-balance-inquiry#v0.3.0）；
-// 如果清单里已经是 file:/link:/workspace: 这类本地指向，就原样保留，不覆盖用户的写法。
+// 依赖规格要写成包管理器能解析的形式（等价于 pnpm add dsh-balance-inquiry），
+// 裸版本号在包发到 npm 之前会让以后任何一次 `pnpm install` / 插件市场操作都 404。
+// 清单里已经是 file:/link:/workspace: 这类本地指向时原样保留，不覆盖用户的写法。
 const currentDep = manifest.dependencies[name];
 const isLocalDep = typeof currentDep === "string" && /^(file:|link:|workspace:|portal:)/.test(currentDep);
 const wantedDep = isLocalDep ? currentDep : NPM_SPEC;
@@ -114,14 +100,7 @@ if (added.length > 0) {
 	fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
 }
 
-// 3) 清掉改名前的包目录
-const legacyDir = path.join(profileDir, "node_modules", LEGACY_NAME);
-if (fs.existsSync(legacyDir)) {
-	fs.rmSync(legacyDir, { recursive: true, force: true });
-	added.push("删除 node_modules/" + LEGACY_NAME);
-}
-
-// 4) 自检：清单、包体、宿主半边
+// 3) 自检：清单、包体、宿主半边
 JSON.parse(fs.readFileSync(manifestPath, "utf8"));
 for (const file of ["package.json", "cordis.patch.yml", "lib/index.js", "lib/client.js"]) {
 	if (!fs.existsSync(path.join(dst, file))) {
@@ -138,5 +117,5 @@ console.log("清单改动 : " + (added.length ? added.join("；") : "无需改�
 console.log("bundles  : " + manifest.dsh.profile.bundles.join(", "));
 console.log("");
 console.log("下一步：完全退出并重新打开 DeepSeek Harness（profile 的 bundles 只在启动时读取）。");
-console.log("想改用 pnpm / npm 管理也可以：在 profile 目录里 pnpm add " + name + "（包已发布到 npm，" + NPM_SPEC + "），");
+console.log("想改用 pnpm / npm 管理也可以：在 profile 目录里 pnpm add " + name + "（" + NPM_SPEC + "），");
 console.log("然后 node tools/register-profile-bundle.cjs " + profileDir + " 登记 bundles 条目（pnpm 不会自动登记）。");

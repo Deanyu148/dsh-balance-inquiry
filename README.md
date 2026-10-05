@@ -43,10 +43,8 @@ dsh plugin --profile desktop add dsh-balance-inquiry
 
 打开 **设置 → 余额查询**：
 
-> 插件**出厂不预设任何站点**：接口地址与官网地址都是空的，也不会自动去查任何第三方服务。
+> 插件**不预设任何站点**：接口地址与官网地址都是空的，也不会自动去查任何第三方服务。
 > 第一次使用请自己填接口地址和访问令牌；两个地址都为空时，侧边栏按钮只刷新、不跳转。
-> 升级到 0.3.2 时，如果地址还停留在旧版本的出厂预置值（`https://apicdn.cottonapi.cloud` /
-> `https://cottonapi.cloud`），会被视为「没填过」而清空；自己填过的地址一律保留。
 
 | 字段 | 说明 |
 | --- | --- |
@@ -65,8 +63,6 @@ dsh plugin --profile desktop add dsh-balance-inquiry
 
 配置存在渲染进程的 `localStorage`（键 `dsh-balance-inquiry:config`），最近一次查询结果缓存在
 `dsh-balance-inquiry:last-reading`，所以重启后按钮会立刻显示上次的余额，不用等第一次请求。
-旧版本的配置（只有 `refreshSeconds`、没有 `provider`）会在读取时自动迁移；改名前的存储键
-（`dsh-quota:config` / `dsh-quota:last-reading`）也会在第一次读取时自动搬到新键上。
 
 ## 各供应商的端点
 
@@ -178,54 +174,6 @@ dsh plugin --profile desktop add dsh-balance-inquiry
 - **设置 → 余额查询** 底部会显示当前用的通道：`查询通道：DSH 宿主进程代理（不经过浏览器，无跨域限制）`
   或 `查询通道：浏览器直连（目标站必须允许跨域，否则会被拦）`。
 
-## 重装 / 恢复
-
-源码目录在 `E:\文档\deepseek-harness\default-workspace\dsh-balance-inquiry\`。如果哪天这一行不见了
-（例如用插件市场装了别的插件，pnpm 清理了 node_modules 里它不认识的目录），重新执行一次即可：
-
-```powershell
-cd E:\文档\deepseek-harness\default-workspace\dsh-balance-inquiry
-node tools\install-balance-plugin.cjs
-```
-
-用 pnpm 装的（方式一）就重跑一遍同样的命令，把 ref 换成新的 tag 即可升级：
-
-```powershell
-cd E:\.dsh\profiles\desktop
-pnpm add github:Deanyu148/dsh-balance-inquiry#v0.3.0
-```
-
-> pnpm 会把 lockfile 里解析到的 commit 钉住，所以升级时记得改 tag；只跑 `pnpm install`
-> 会继续用 lockfile 里的旧版本。
-
-自测（不需要 DSH 在运行）：
-
-```powershell
-node tools\balance-smoke-test.cjs           # 客户端 bundle：212 项断言
-node tools\balance-host-proxy-test.cjs      # 宿主代理：22 项断言
-node tools\verify-balance-install.cjs       # 装机校验：包能解析 + 文件与源目录一致
-```
-
-- 第一个用一个假的 `window` / `document` / `location` / `fetch` / React 加载 `lib/client.js`，
-  覆盖插槽注册顺序、样式、New API 快乐路径、旧配置迁移、401 / 瞬时失败 / 10 分钟窗口 /
-  HTTP 500 / 200+success:false、六类原生供应商、自定义脚本（占位符、多套餐、8 类错误）、
-  换算比例与颜色规则、轮询间隔、保存与打开官网、未配置、**宿主代理**（请求形状、
-  代理不可用回落直连、代理报告的网络错误 / 超时、查询通道提示），以及**8 家编程套餐**
-  （Kimi 的两个窗口、智谱的个人 / 团队版与窗口归类、MiniMax 国内 / 国际、ZenMux、
-  OpenCode Go 三窗口与 403、火山方舟的签名形状与 AFP → Coding Plan 兜底、Command Code 的四次串行请求）。
-- 第二个起一个**不返回任何 CORS 头**的本机服务当靶子，验证宿主代理确实读得到它的响应
-  （浏览器在这里会失败），并覆盖 cookie 校验、地址白名单、连不上 / 超时语义、超时夹取，
-  以及 `User-Agent` / 自定义头的转发。
-- 第三个校验 profile 清单与已安装文件（防止「改了源码没重装」或「装了旧版本」）。
-
-## 致谢与许可
-
-- 查询功能参考并复刻了开源项目 **cc-switch**：
-  <https://github.com/farion1231/cc-switch>（MIT License，Copyright (c) 2025 Jason Young）。
-  本插件查询功能基于 cc-switch 的余额查询功能实现，原作者版权声明与 MIT 许可全文见
-  [`NOTICE.md`](./NOTICE.md)。
-- 本插件 `dsh-balance-inquiry` 同样以 MIT 许可发布，全文见 [`LICENSE`](./LICENSE)。
-
 ## 目录
 
 ```
@@ -233,17 +181,17 @@ dsh-balance-inquiry/
 ├── package.json        # dsh.bundle.patch + dsh.client.platform = web
 ├── cordis.patch.yml    # 插入 Loader 条目
 ├── CHANGELOG.md
-├── docs/screenshot.png # README 顶部的截图
+├── docs/               # README 顶部的截图
 ├── icon.svg
 ├── LICENSE             # MIT
 ├── locale/{zh,en}.json # 文案（同一份也内联在 client.js 里）
 ├── README.md
-├── NOTICE.md           # cc-switch 的引用说明 + 原作者版权与 MIT 许可全文
+├── NOTICE.md           # 许可证与版权说明
 ├── tools/              # 安装 / 自测脚本（不会随安装复制进 profile）
-│   ├── install-balance-plugin.cjs      # 方式二：复制包目录 + 补清单 + 清 dsh-quota 残留
-│   ├── register-profile-bundle.cjs     # 方式一：只把包名登记进 dsh.profile.bundles
-│   ├── balance-smoke-test.cjs          # 客户端 bundle 自测（212 项断言）
-│   ├── balance-host-proxy-test.cjs     # 宿主代理自测（22 项断言）
+│   ├── install-balance-plugin.cjs      # 复制包目录 + 补 profile 清单
+│   ├── register-profile-bundle.cjs     # 只把包名登记进 dsh.profile.bundles
+│   ├── balance-smoke-test.cjs          # 客户端 bundle 自测
+│   ├── balance-host-proxy-test.cjs     # 宿主代理自测
 │   ├── verify-balance-install.cjs      # 装机校验（源目录 / 装机目录逐文件比对）
 │   └── sync-balance-locale.cjs         # 把 client.js 里的文案同步到 locale/*.json
 └── lib/

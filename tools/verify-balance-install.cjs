@@ -6,7 +6,7 @@
  *   1. profile 清单里有 dependencies.dsh-balance-inquiry 与 dsh.profile.bundles 里的 dsh-balance-inquiry；
  *   2. 装好的包能按包名解析（宿主半边可以 import，客户端 bundle 能 resolve 到）；
  *   3. 客户端 bundle 只 require 冻结基线里的模块（react）；
- *   4. 源目录与装好的目录逐文件 SHA256 一致（没有装了旧版本）。
+ *   4. 源目录与装好的目录逐文件 SHA256 一致（装的是不是当前源码）。
  *
  * 用法：node tools/verify-balance-install.cjs
  */
@@ -66,10 +66,6 @@ async function main() {
 	check("dependencies.dsh-balance-inquiry 已声明", Boolean(declared), declared);
 	check("dsh.profile.bundles 含 dsh-balance-inquiry", bundles.includes("dsh-balance-inquiry"), "index " + bundles.indexOf("dsh-balance-inquiry") + "/" + bundles.length);
 	check("bundles 里紧跟 dsh-context（保持顺序）", bundles.indexOf("dsh-balance-inquiry") === bundles.indexOf("dsh-context") + 1);
-	// 改名前的残留（dsh-quota）必须清干净，否则 DSH 启动时会去加载一个不存在的插件。
-	check("旧包名 dsh-quota 已从 dependencies 移除", !(manifest.dependencies && "dsh-quota" in manifest.dependencies));
-	check("旧包名 dsh-quota 已从 bundles 移除", !bundles.includes("dsh-quota"));
-	check("旧包目录 node_modules/dsh-quota 已删除", !fs.existsSync(path.join(PROFILE, "node_modules", "dsh-quota")));
 
 	console.log("\n2. 包能按名字解析");
 	const require_ = createRequire(path.join(PROFILE, "package.json"));

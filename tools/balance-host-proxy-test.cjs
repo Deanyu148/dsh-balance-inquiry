@@ -2,8 +2,7 @@
 /**
  * dsh-balance-inquiry 宿主半边（lib/index.js）的冒烟测试。
  *
- * 这里验证的是「为什么 cc-switch 能查、浏览器里的插件不能」那件事的解法：
- * 请求改由宿主进程（Node，无 CORS）发出。测试自己起一个**不返回任何
+ * 请求由宿主进程（Node，无 CORS）发出。测试自己起一个**不返回任何
  * Access-Control-Allow-Origin 头**的本机 HTTP 服务当作「被 CORS 拦住的目标站」，
  * 然后确认：
  *   - 宿主代理能读到它的响应（浏览器里这会直接 TypeError）；
@@ -11,7 +10,7 @@
  *   - 非 HTTPS（非本机）、带用户名密码、内网地址一律拒绝；
  *   - 上游连不上 / 超时分别回 kind=network / kind=timeout，且超时被夹到 [2,30] 秒。
  *
- * 用法：node tools/quota-host-proxy-test.cjs [-v]
+ * 用法：node tools/balance-host-proxy-test.cjs [-v]
  */
 "use strict";
 
@@ -213,12 +212,12 @@ async function main() {
 	const echoRules = JSON.stringify({
 		url: "http://127.0.0.1:" + port + "/echo",
 		method: "GET",
-		headers: { "User-Agent": "cc-switch/1.0", "X-Test": "1", Authorization: "Bearer sk-test" }
+		headers: { "User-Agent": "dsh-balance-inquiry-test/1.0", "X-Test": "1", Authorization: "Bearer sk-test" }
 	});
 	const echo = await call(handler, "POST", { cookie: "dsh=1" }, echoRules);
 	const echoBody = jsonOf(echo);
 	const echoed = echoBody && echoBody.ok === true ? JSON.parse(echoBody.body).headers : {};
-	check("User-Agent 原样到达目标站（浏览器里会被忽略）", echoed["user-agent"] === "cc-switch/1.0", JSON.stringify(echoed["user-agent"]));
+	check("User-Agent 原样到达目标站（浏览器里会被忽略）", echoed["user-agent"] === "dsh-balance-inquiry-test/1.0", JSON.stringify(echoed["user-agent"]));
 	check("自定义头与 Authorization 都到达", echoed["x-test"] === "1" && echoed.authorization === "Bearer sk-test", JSON.stringify(echoed));
 
 	section("6. 上游失败语义");

@@ -1,22 +1,22 @@
 #!/usr/bin/env node
 /**
- * dsh-balance-inquiry 客户端 bundle 的冒烟测试（余额查询实现对齐 cc-switch 之后的版本）。
+ * dsh-balance-inquiry 客户端 bundle 的冒烟测试。
  *
  * 用假的浏览器环境（window / document / localStorage / fetch / AbortController / React）
  * 加载 dsh-balance-inquiry/lib/client.js，覆盖：
  *   1. bundle 形状与两个插槽注册（侧边栏 order 必须小于「上下文洞察」的 10）；
  *   2. 样式注入；
  *   3. New API 查询：请求形状、侧边栏行、tooltip、设置页状态与字段；
- *   4. 旧配置迁移（refreshSeconds → autoQueryInterval 分钟）；
- *   5. 鉴权失败 / 瞬时失败（保留 10 分钟内上次成功值）/ HTTP 500 / 200+success:false；
- *   6. 原生余额供应商（DeepSeek / OpenRouter / Novita）与 401；
- *   7. 自定义用量脚本：占位符替换、多套餐、6 类脚本错误；
- *   8. 换算比例、货币单位、余额为 0 与 % 档位的颜色规则；
- *   9. 间隔 0 不轮询、保存按钮持久化、未配置状态；
- *  10. 宿主代理（请求由宿主进程发出，绕开浏览器 CORS）：请求形状、代理不可用回落直连、
- *      代理报告的网络错误 / 超时文案、设置页的查询通道提示。
+ *   4. 鉴权失败 / 瞬时失败（保留 10 分钟内上次成功值）/ HTTP 500 / 200+success:false；
+ *   5. 原生余额供应商（DeepSeek / OpenRouter / Novita）与 401；
+ *   6. 自定义用量脚本：占位符替换、多套餐、6 类脚本错误；
+ *   7. 换算比例、货币单位、余额为 0 与 % 档位的颜色规则；
+ *   8. 间隔 0 不轮询、保存按钮持久化、未配置状态（含全新安装）；
+ *   9. 宿主代理（请求由宿主进程发出，绕开浏览器 CORS）：请求形状、代理不可用回落直连、
+ *      代理报告的网络错误 / 超时文案、设置页的查询通道提示；
+ *  10. 编程套餐（Token Plan / Coding Plan）的解析与错误分支。
  *
- * 用法：node tools/quota-smoke-test.cjs [-v]
+ * 用法：node tools/balance-smoke-test.cjs [-v]
  */
 "use strict";
 
@@ -29,9 +29,9 @@ const source = fs.readFileSync(CLIENT, "utf8");
 
 /** dsh-context 的「上下文洞察」在 sidebar.footer.action 里的 order，见 dsh-context/lib/client.js。 */
 const CONTEXT_OVERVIEW_ORDER = 10;
-/** cc-switch queries.ts: KEEP_LAST_GOOD_MS —— 瞬时失败后仍展示上次成功值的窗口。 */
+/** 瞬时失败后仍展示上次成功值的窗口。 */
 const KEEP_LAST_GOOD_MS = 10 * 60 * 1000;
-/** cc-switch queries.ts: retryDelay 1500ms，queryQuota 只对传输层失败重试一次。 */
+/** queryQuota 只对传输层失败重试一次时的等待时间。 */
 const RETRY_DELAY_MS = 1500;
 
 const verbose = process.argv.indexOf("-v") !== -1 || process.argv.indexOf("--verbose") !== -1;
@@ -550,26 +550,30 @@ async function main() {
 	check("查询方式为下拉选择（17 种：9 种余额 + 8 种编程套餐）", allTags(fieldOf(newApiPage, "查询方式"), "option").length === 17, allTags(fieldOf(newApiPage, "查询方式"), "option").length);
 	check("保存 / 立即查询 / 打开官网 / 恢复默认 按钮齐全", ["保存", "立即查询", "打开官网", "恢复默认"].every((text) => Boolean(buttonByText(newApiPage, text))));
 	check("设置页标题 = 余额查询", has(textOf(newApiPage), "余额查询"));
-	check("设置页文案不再出现 cc-switch", !has(textOf(newApiPage), "cc-switch") && !has(textOf(newApiPage), "ccswitch"), textOf(newApiPage).slice(0, 120));
 	//#endregion
 
-	//#region 4. 旧配置迁移
-	section("4. 旧配置迁移（refreshSeconds → autoQueryInterval）");
-	const migratedEnv = bootstrap({
+	//#region 4. 配置加载
+	section("4a. 存储里缺字段用默认值补齐，多余的键被忽略");
+	const partialEnv = bootstrap({
 		storage: {
-			"dsh-balance-inquiry:config": JSON.stringify({ baseUrl: "https://api.example.com", accessToken: "sk-test-token", websiteUrl: "https://example.com", refreshSeconds: 300, quotaPerUnit: 500000 })
+			"dsh-balance-inquiry:config": JSON.stringify({ baseUrl: "https://api.example.com", accessToken: "sk-test-token", websiteUrl: "https://example.com", quotaPerUnit: 500000, somethingRemoved: true })
 		},
 		fetch: async () => json(newApiBody())
 	});
 	await tick(30);
-	const migratedPage = pageTree(migratedEnv);
-	check("300 秒 → 5 分钟", propsOf(fieldOf(migratedPage, "自动查询间隔")).value === "5", propsOf(fieldOf(migratedPage, "自动查询间隔")).value);
-	const migratedEnv2 = bootstrap({
-		storage: { "dsh-balance-inquiry:config": JSON.stringify({ baseUrl: "https://api.example.com", accessToken: "sk-test-token", refreshSeconds: 0 }) },
+	const partialPage = pageTree(partialEnv);
+	check("缺失的自动查询间隔回落到默认 5 分钟", propsOf(fieldOf(partialPage, "自动查询间隔")).value === "5", propsOf(fieldOf(partialPage, "自动查询间隔")).value);
+	check("缺失的额度换算比例回落到默认 500000", propsOf(fieldOf(partialPage, "额度换算比例")).value === "500000", propsOf(fieldOf(partialPage, "额度换算比例")).value);
+
+	section("4b. 数字字段越界时收敛到允许区间");
+	const clampedEnv = bootstrap({
+		storage: { "dsh-balance-inquiry:config": JSON.stringify({ baseUrl: "https://api.example.com", accessToken: "sk-test-token", autoQueryInterval: 0, timeoutSeconds: 999 }) },
 		fetch: async () => json(newApiBody())
 	});
 	await tick(30);
-	check("0 秒（关闭）→ 0 分钟", propsOf(fieldOf(pageTree(migratedEnv2), "自动查询间隔")).value === "0", propsOf(fieldOf(pageTree(migratedEnv2), "自动查询间隔")).value);
+	const clampedPage = pageTree(clampedEnv);
+	check("间隔 0 = 不自动查询", propsOf(fieldOf(clampedPage, "自动查询间隔")).value === "0", propsOf(fieldOf(clampedPage, "自动查询间隔")).value);
+	check("超时收敛到上限 30 秒", propsOf(fieldOf(clampedPage, "请求超时")).value === "30", propsOf(fieldOf(clampedPage, "请求超时")).value);
 	const clearEnv = bootstrap({
 		storage: {
 			"dsh-balance-inquiry:config": JSON.stringify(Object.assign({}, CONFIG, { websiteUrl: "" })),
@@ -580,19 +584,6 @@ async function main() {
 	await tick(30);
 	check("清空官网地址会被保留（不被默认值覆盖）", storedConfig(clearEnv).websiteUrl === "", JSON.stringify(storedConfig(clearEnv).websiteUrl));
 	check("官网地址为空时按钮回落到接口地址", propsOf(allTags(entryTree(clearEnv), "a")[0]).href === "https://api.example.com", propsOf(allTags(entryTree(clearEnv), "a")[0]).href);
-
-	// 改名（dsh-quota → dsh-balance-inquiry）后的存储键迁移：旧键会被搬到新键上。
-	const legacyEnv = bootstrap({
-		storage: {
-			"dsh-quota:config": JSON.stringify(Object.assign({}, CONFIG, { baseUrl: "https://legacy.example.com" })),
-			"dsh-quota:last-reading": JSON.stringify(snap(ok([item()])))
-		},
-		fetch: async () => json(newApiBody())
-	});
-	await tick(30);
-	const movedConfig = storedConfig(legacyEnv);
-	check("旧键 dsh-quota:config 被搬到 dsh-balance-inquiry:config", movedConfig !== null && movedConfig.baseUrl === "https://legacy.example.com", JSON.stringify(movedConfig && movedConfig.baseUrl));
-	check("旧键 dsh-quota:last-reading 被搬到 dsh-balance-inquiry:last-reading", storedSnapshot(legacyEnv) !== null);
 	//#endregion
 
 	//#region 5. 失败语义
@@ -762,7 +753,7 @@ async function main() {
 	check("脚本编辑框存在且带内容", has(propsOf(fieldOf(pageTree(scriptEnv), "自定义用量脚本")).value, "extractor"));
 	check("两个模板按钮存在", Boolean(buttonByText(pageTree(scriptEnv), "填入 New API 模板")) && Boolean(buttonByText(pageTree(scriptEnv), "填入通用模板")));
 
-	section("7b. 脚本错误提示（与 cc-switch usage_script.rs 一致）");
+	section("7b. 脚本错误提示");
 	const scriptCases = [
 		{ name: "空脚本", script: "", expect: "尚未填写自定义脚本" },
 		{ name: "非 HTTPS 地址", script: '({ request: { url: "http://api.example.com/x", method: "GET", headers: {} }, extractor: function () { return { remaining: 1 }; } })', expect: "request.url 必须是 HTTPS" },
@@ -886,7 +877,7 @@ async function main() {
 	check("设置页状态 = 尚未填写访问令牌", has(textOf(pageTree(emptyEnv)), "尚未填写访问令牌"));
 	check("未配置时官网按钮仍指向官网", propsOf(allTags(emptyEntry, "a")[0]).href === "https://example.com", propsOf(allTags(emptyEntry, "a")[0]).href);
 
-	section("9d. 全新安装：出厂不预设任何地址");
+	section("9d. 全新安装：不预设任何地址");
 	const freshCalls = [];
 	const freshEnv = bootstrap({
 		storage: {},
@@ -901,35 +892,15 @@ async function main() {
 	check("没地址没令牌时不发请求", freshCalls.length === 0, freshCalls.length);
 	check("没网址可打开（href = #）", propsOf(allTags(freshEntry, "a")[0]).href === "#", propsOf(allTags(freshEntry, "a")[0]).href);
 	const freshPage = pageTree(freshEnv);
-	check("接口地址出厂为空", propsOf(fieldOf(freshPage, "接口地址")).value === "", JSON.stringify(propsOf(fieldOf(freshPage, "接口地址")).value));
-	check("官网地址出厂为空", propsOf(fieldOf(freshPage, "官网地址")).value === "", JSON.stringify(propsOf(fieldOf(freshPage, "官网地址")).value));
+	check("接口地址默认为空", propsOf(fieldOf(freshPage, "接口地址")).value === "", JSON.stringify(propsOf(fieldOf(freshPage, "接口地址")).value));
+	check("官网地址默认为空", propsOf(fieldOf(freshPage, "官网地址")).value === "", JSON.stringify(propsOf(fieldOf(freshPage, "官网地址")).value));
 	check("设置页状态 = 尚未填写接口地址", has(textOf(freshPage), "尚未填写接口地址"), textOf(allByClass(freshPage, "dsh-balance-inquiry-status")[0]));
 
-	section("9e. 旧出厂地址（棉花云）不再生效");
-	const legacyDefaultCalls = [];
-	const legacyDefaultEnv = bootstrap({
-		storage: {
-			"dsh-balance-inquiry:config": JSON.stringify({ provider: "auto", baseUrl: "https://apicdn.cottonapi.cloud", websiteUrl: "https://cottonapi.cloud", accessToken: "sk-legacy", autoQueryInterval: 0 })
-		},
-		fetch: async (url) => {
-			legacyDefaultCalls.push(String(url));
-			return json(newApiBody());
-		}
-	});
-	await tick(60);
-	const legacyDefaultPage = pageTree(legacyDefaultEnv);
-	check(
-		"旧出厂地址被清空（视为未配置）",
-		propsOf(fieldOf(legacyDefaultPage, "接口地址")).value === "" && propsOf(fieldOf(legacyDefaultPage, "官网地址")).value === "",
-		JSON.stringify([propsOf(fieldOf(legacyDefaultPage, "接口地址")).value, propsOf(fieldOf(legacyDefaultPage, "官网地址")).value])
-	);
-	check("清空后不发请求", legacyDefaultCalls.length === 0, legacyDefaultCalls.length);
-
-	section("9f. 用户自己填过的地址不受迁移影响");
+	section("9e. 用户自己填的地址照常生效");
 	const customAddrCalls = [];
 	const customAddrEnv = bootstrap({
 		storage: {
-			"dsh-balance-inquiry:config": JSON.stringify({ provider: "auto", baseUrl: "https://api.cottonapi.cloud", websiteUrl: "https://api.cottonapi.cloud", accessToken: "sk-mine", autoQueryInterval: 0 })
+			"dsh-balance-inquiry:config": JSON.stringify({ provider: "auto", baseUrl: "https://api.example.com", websiteUrl: "https://example.com", accessToken: "sk-mine", autoQueryInterval: 0 })
 		},
 		fetch: async (url) => {
 			customAddrCalls.push(String(url));
@@ -937,11 +908,11 @@ async function main() {
 		}
 	});
 	await tick(60);
-	check("用户填的地址原样保留", propsOf(fieldOf(pageTree(customAddrEnv), "接口地址")).value === "https://api.cottonapi.cloud", propsOf(fieldOf(pageTree(customAddrEnv), "接口地址")).value);
+	check("用户填的地址原样保留", propsOf(fieldOf(pageTree(customAddrEnv), "接口地址")).value === "https://api.example.com", propsOf(fieldOf(pageTree(customAddrEnv), "接口地址")).value);
 	check("照常发出请求", customAddrCalls.length === 1, customAddrCalls.length);
 	//#endregion
 
-	//#region 10. 宿主代理（cc-switch 同款能力：请求由宿主进程发出，绕开浏览器 CORS）
+	//#region 10. 宿主代理（请求由宿主进程发出，绕开浏览器 CORS）
 	section("10a. 宿主代理：请求形状与相对路径解析");
 	const proxyTargetCalls = [];
 	const proxyEnv = bootstrap({
@@ -1014,7 +985,7 @@ async function main() {
 	);
 	//#endregion
 
-	//#region 11. 编程套餐（Token Plan / Coding Plan，cc-switch services/coding_plan.rs）
+	//#region 11. 编程套餐（Token Plan / Coding Plan）
 	section("11a. 自测工具：SHA-256 / HMAC-SHA256 / 火山签名（与 node:crypto 对拍）");
 	const internals = (baseEnv.moduleExports && baseEnv.moduleExports.__internals) || {};
 	check("导出 __internals（供自测的纯函数）", Boolean(internals.sha256Hex) && Boolean(internals.hmacSha256Hex) && Boolean(internals.volSign) && Boolean(internals.parseZhipuTiers));
@@ -1454,7 +1425,6 @@ async function main() {
 	const volPage = pageTree(bootstrap({ storage: { "dsh-balance-inquiry:config": JSON.stringify(Object.assign({}, ccConfig, { provider: "cp-volcengine" })) }, fetch: async () => json({ Result: {} }) }));
 	check("火山方舟显示 AccessKey ID 字段", Boolean(fieldOf(volPage, "AccessKey ID")));
 	check("SecretAccessKey 是 password 输入", propsOf(fieldOf(volPage, "SecretAccessKey")).type === "password", propsOf(fieldOf(volPage, "SecretAccessKey")).type);
-	check("编程套餐设置页不出现 cc-switch 字样", !has(textOf(volPage), "cc-switch") && !has(textOf(volPage), "ccswitch"));
 	//#endregion
 
 	// ---- 汇总 ----
