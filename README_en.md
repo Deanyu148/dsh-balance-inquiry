@@ -12,8 +12,8 @@ Adds one row at the bottom of the DSH left sidebar, **above** "Context Insights"
 ```
 
 ![Main view](docs/screenshot-1.png)
-![Settings](docs/screenshot-2.png)
-
+![Lookup](docs/screenshot-2.png)
+![Settings](docs/screenshot-3.png)
 
 - **Multiple plans**: one plan = one configuration. The sidebar shows the most urgent plan
   across all of them. **Left click the row to open the balance board**, where every plan is a

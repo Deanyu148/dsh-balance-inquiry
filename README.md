@@ -12,7 +12,8 @@
 ```
 
 ![主页](docs/screenshot-1.png)
-![设置页](docs/screenshot-2.png)
+![看板页](docs/screenshot-2.png)
+![设置页](docs/screenshot-3.png)
 
 
 - **多套餐**：一个套餐一条配置，侧边栏显示所有套餐里最紧急的那条；**左键点这一行打开余额看板**，
