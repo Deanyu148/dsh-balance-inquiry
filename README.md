@@ -1,5 +1,7 @@
 # dsh-balance-inquiry
 
+[**English**](./README_en.md) ｜ 简体中文
+
 已发布到 npm：[`dsh-balance-inquiry`](https://www.npmjs.com/package/dsh-balance-inquiry)
 （`npm i dsh-balance-inquiry` / `pnpm add dsh-balance-inquiry`）。
 
@@ -194,12 +196,14 @@ dsh plugin --profile desktop add dsh-balance-inquiry
 dsh-balance-inquiry/
 ├── package.json        # dsh.bundle.patch + dsh.client.platform = web
 ├── cordis.patch.yml    # 插入 Loader 条目
-├── CHANGELOG.md
+├── CHANGELOG.md        # 中文更新日志
+├── CHANGELOG_en.md     # 英文更新日志
 ├── docs/               # README 顶部的截图
 ├── icon.svg
 ├── LICENSE             # MIT
 ├── locale/{zh,en}.json # 文案（同一份也内联在 client.js 里）
-├── README.md
+├── README.md           # 中文说明
+├── README_en.md        # 英文说明
 ├── NOTICE.md           # 许可证与版权说明
 ├── tools/              # 安装 / 自测脚本（不会随安装复制进 profile）
 │   ├── install-balance-plugin.cjs      # 复制包目录 + 补 profile 清单
@@ -214,4 +218,4 @@ dsh-balance-inquiry/
     └── client.js       # 全部功能：侧边栏条目 + 设置页 + 查询引擎 + 代理优先 / 直连回落
 ```
 
-版本变更见 [`CHANGELOG.md`](./CHANGELOG.md)。
+版本变更见 [`CHANGELOG.md`](./CHANGELOG.md)（中文）· [`CHANGELOG_en.md`](./CHANGELOG_en.md)（English）。

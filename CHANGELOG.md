@@ -1,5 +1,13 @@
 # 更新日志
 
+[**English**](./CHANGELOG_en.md) ｜ 简体中文
+
+## 0.4.1
+
+- 新增英文文档 [`README_en.md`](./README_en.md) 与 [`CHANGELOG_en.md`](./CHANGELOG_en.md)，
+  中文版顶部加「English」语言切换链接。
+- npm 包里一并带上这两个英文文件。
+
 ## 0.4.0
 
 - **多套餐**：一个套餐 = 一条配置（厂商 / 计费类型 / 令牌 / 接口地址 / 官网地址）。
