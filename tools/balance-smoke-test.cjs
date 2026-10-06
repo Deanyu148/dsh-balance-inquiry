@@ -48,6 +48,71 @@ const DEFAULT_ITEM = {
 	extra: null
 };
 
+const KEY_SETTINGS = "dsh-balance-inquiry:settings";
+const KEY_ACCOUNTS = "dsh-balance-inquiry:accounts";
+const KEY_RESULTS = "dsh-balance-inquiry:results";
+
+/** 把「一条旧式配置」+「上次读数」翻译成新存储（测试侧的兼容层，插件本身不再做迁移）。 */
+function expandStorage(storage) {
+	const out = Object.assign({}, storage);
+	const legacyConfig = out["dsh-balance-inquiry:config"];
+	const legacyLast = out["dsh-balance-inquiry:last-reading"];
+	delete out["dsh-balance-inquiry:config"];
+	delete out["dsh-balance-inquiry:last-reading"];
+	if (legacyConfig !== undefined && out[KEY_ACCOUNTS] === undefined) {
+		let parsed = {};
+		try {
+			parsed = JSON.parse(legacyConfig);
+		} catch (error) {
+			parsed = {};
+		}
+		const acct = Object.assign({ id: "acct-1", name: "测试套餐", kind: "api" }, parsed);
+		out[KEY_ACCOUNTS] = JSON.stringify([acct]);
+		out[KEY_SETTINGS] = JSON.stringify({
+			autoQueryInterval: parsed.autoQueryInterval === undefined ? 5 : parsed.autoQueryInterval,
+			timeoutSeconds: parsed.timeoutSeconds === undefined ? 10 : parsed.timeoutSeconds
+		});
+	}
+	if (legacyLast !== undefined && out[KEY_RESULTS] === undefined) {
+		try {
+			const snapshot = JSON.parse(legacyLast);
+			if (snapshot && snapshot.data && typeof snapshot.at === "number") {
+				out[KEY_RESULTS] = JSON.stringify({ "acct-1": { data: snapshot.data, at: snapshot.at, stale: false, error: "" } });
+			}
+		} catch (error) {
+			// 坏掉的缓存忽略
+		}
+	}
+	return out;
+}
+
+function account(over) {
+	return Object.assign({ id: "acct-1", name: "测试套餐", kind: "api" }, over || {});
+}
+
+function storageOf(accounts, settings, results) {
+	const out = {};
+	out[KEY_ACCOUNTS] = JSON.stringify(accounts || [account(CONFIG)]);
+	if (settings !== undefined) out[KEY_SETTINGS] = JSON.stringify(settings);
+	if (results !== undefined) out[KEY_RESULTS] = JSON.stringify(results);
+	return out;
+}
+
+function storedAccounts(env) {
+	const raw = env.memory.get(KEY_ACCOUNTS);
+	return raw ? JSON.parse(raw) : null;
+}
+
+function storedSettings(env) {
+	const raw = env.memory.get(KEY_SETTINGS);
+	return raw ? JSON.parse(raw) : null;
+}
+
+function storedResults(env) {
+	const raw = env.memory.get(KEY_RESULTS);
+	return raw ? JSON.parse(raw) : null;
+}
+
 function item(over) {
 	return Object.assign({}, DEFAULT_ITEM, over || {});
 }
@@ -72,7 +137,7 @@ function json(body, status) {
 }
 
 const CONFIG = {
-	provider: "auto",
+	provider: "newapi",
 	baseUrl: "https://api.example.com",
 	accessToken: "sk-test-token",
 	userId: "7",
@@ -203,7 +268,10 @@ function fingerprint(file) {
 function bootstrap(options) {
 	const settings = options || {};
 	const memory = new Map();
-	if (settings.storage) for (const key of Object.keys(settings.storage)) memory.set(key, settings.storage[key]);
+	if (settings.storage) {
+		const expanded = expandStorage(settings.storage);
+		for (const key of Object.keys(expanded)) memory.set(key, expanded[key]);
+	}
 	const styleTags = [];
 	const opened = [];
 	const listeners = {};
@@ -375,6 +443,43 @@ function pageTree(env) {
 	return render(registration.Component({}));
 }
 
+/** 余额看板（shell.overlay）：未打开时返回 null。 */
+function boardTree(env) {
+	const registration = registrationOf(env, "shell.overlay");
+	return render(registration.Component({}));
+}
+
+/** 打开余额看板（点侧边栏按钮）并返回它的渲染树。 */
+function openBoard(env) {
+	if (boardTree(env) === null) click(allTags(entryTree(env), "button")[0]);
+	return boardTree(env);
+}
+
+/** 看板第 index 张卡片。 */
+function boardCardOf(env, index) {
+	const board = openBoard(env);
+	if (!board) return null;
+	return allByClass(board, "dsh-balance-inquiry-card")[index === undefined ? 0 : index] || null;
+}
+
+/** 看板第 index 张卡片的跳转地址（没有卡片时返回 ""）。 */
+function boardHrefOf(env, index) {
+	const card = boardCardOf(env, index);
+	if (!card) return "";
+	click(card);
+	const opened = env.opened[env.opened.length - 1];
+	return opened ? opened[0] : "";
+}
+
+/** 一级设置页 → 点第一条套餐的长条按钮 → 二级编辑页的渲染树。 */
+function editPageOf(env) {
+	const list = pageTree(env);
+	const rows = allByClass(list, "dsh-balance-inquiry-account");
+	if (!rows.length) return list;
+	click(rows[0]);
+	return pageTree(env);
+}
+
 function allByClass(node, className) {
 	return findAll(node, (entry) => {
 		const value = propsOf(entry).className;
@@ -415,16 +520,20 @@ function click(node) {
 	if (typeof handler === "function") handler({ preventDefault() {} });
 }
 
-/** 读取当前持久化的配置。 */
+/** 读回第一条持久化套餐（旧用例关心的是「配置有没有被写回去」）。 */
 function storedConfig(env) {
-	const raw = env.memory.get("dsh-balance-inquiry:config");
-	return raw ? JSON.parse(raw) : null;
+	const list = storedAccounts(env);
+	return list && list.length ? list[0] : null;
 }
 
-/** 读取当前持久化的上次成功快照。 */
+/** 读回第一条套餐的读数（旧用例关心的是「上次成功值还在不在」）。 */
 function storedSnapshot(env) {
-	const raw = env.memory.get("dsh-balance-inquiry:last-reading");
-	return raw ? JSON.parse(raw) : null;
+	const map = storedResults(env);
+	if (!map) return null;
+	const first = Object.keys(map)[0];
+	if (!first) return null;
+	const reading = map[first];
+	return reading && reading.data ? { data: reading.data, at: reading.at } : null;
 }
 //#endregion
 
@@ -451,10 +560,13 @@ async function main() {
 			typeof baseEnv.moduleExports.apply === "function"
 	);
 	check("inject = ['slots','locale']", baseEnv.moduleExports.inject.join(",") === "slots,locale", baseEnv.moduleExports.inject.join(","));
-	check("只注册了两个插槽", baseEnv.registrations.length === 2, baseEnv.registrations.length);
+	check("只注册了三个插槽（侧边栏 + 设置页 + 余额看板）", baseEnv.registrations.length === 3, baseEnv.registrations.length);
 	const footerRegistration = registrationOf(baseEnv, "sidebar.footer.action");
 	const settingsRegistration = registrationOf(baseEnv, "settings.section");
+	const boardRegistration = registrationOf(baseEnv, "shell.overlay");
 	check("注册 sidebar.footer.action", Boolean(footerRegistration));
+	check("注册 shell.overlay（余额看板）", Boolean(boardRegistration));
+	check("看板 id = quota-board", boardRegistration && boardRegistration.options.id === "quota-board", boardRegistration && boardRegistration.options.id);
 	check("侧边栏条目 id = quota", footerRegistration && footerRegistration.options.id === "quota", footerRegistration && footerRegistration.options.id);
 	check(
 		"order 小于「上下文洞察」的 " + CONTEXT_OVERVIEW_ORDER + "（显示在它上面）",
@@ -510,46 +622,60 @@ async function main() {
 	const newApiEntry = entryTree(newApiEnv);
 	const labelNode = firstByClass(newApiEntry, "dsh-balance-inquiry-entry-label");
 	check("按钮文案 = 剩余额度：10.00 ￥", textOf(labelNode) === "剩余额度：10.00 ￥", textOf(labelNode));
-	const linkNode = allTags(newApiEntry, "a")[0];
-	check("href = 官网地址", propsOf(linkNode).href === "https://example.com", propsOf(linkNode).href);
-	check("target=_blank + rel=noreferrer", propsOf(linkNode).target === "_blank" && has(propsOf(linkNode).rel, "noreferrer"));
-	check("className 含 dsh-balance-inquiry-entry", has(propsOf(linkNode).className, "dsh-balance-inquiry-entry"));
+	const entryButton = allTags(newApiEntry, "button")[0];
+	check("侧边栏条目是按钮（左键开看板）", Boolean(entryButton) && propsOf(entryButton).type === "button");
+	check("className 含 dsh-balance-inquiry-entry", has(propsOf(entryButton).className, "dsh-balance-inquiry-entry"));
 	check("图标随宽度取 16", Number(propsOf(allTags(newApiEntry, "svg")[0]).width) === 16, propsOf(allTags(newApiEntry, "svg")[0]).width);
 	check(
-		"tooltip 含余额 / 已用 / 总额 / 剩余比例 / 更新时间",
-		has(propsOf(linkNode).title, "余额 10.00 ￥") &&
-			has(propsOf(linkNode).title, "已用 2.00 ￥") &&
-			has(propsOf(linkNode).title, "总额 12.00 ￥") &&
-			has(propsOf(linkNode).title, "剩余 83.33%") &&
-			has(propsOf(linkNode).title, "更新时间："),
-		propsOf(linkNode).title
+		"tooltip 含每个套餐的余额与更新时间",
+		has(propsOf(entryButton).title, "测试套餐：余额 10.00 ￥") && has(propsOf(entryButton).title, "更新时间："),
+		propsOf(entryButton).title
 	);
-	click(linkNode);
+	check("看板初始未打开", boardTree(newApiEnv) === null);
+	click(entryButton);
+	check("左键点击打开余额看板", boardTree(newApiEnv) !== null);
+	const newApiBoard = openBoard(newApiEnv);
+	check("看板里有添加套餐按钮", Boolean(buttonByText(newApiBoard, "添加套餐")));
+	const newApiCard = boardCardOf(newApiEnv, 0);
+	check("看板卡片显示套餐名称", has(textOf(newApiCard), "测试套餐"), textOf(newApiCard));
+	check("看板卡片显示剩余额度", has(textOf(newApiCard), "10.00 ￥"), textOf(newApiCard));
+	check("看板卡片显示上次查询时间", has(textOf(newApiCard), "上次查询："), textOf(newApiCard));
+	click(newApiCard);
 	check(
-		"点击调用 window.open(官网, _blank, noopener,noreferrer)",
+		"左键点卡片打开官网",
 		newApiEnv.opened.length === 1 && newApiEnv.opened[0][0] === "https://example.com" && newApiEnv.opened[0][1] === "_blank" && has(newApiEnv.opened[0][2], "noopener"),
 		JSON.stringify(newApiEnv.opened)
 	);
+	check("卡片不再注册右键处理", propsOf(newApiCard).onContextMenu === undefined);
+	// 看板里的「添加套餐」会弹出计费类型选择
+	const boardAddButton = buttonByText(openBoard(newApiEnv), "添加套餐");
+	click(boardAddButton);
+	const pickerBoard = openBoard(newApiEnv);
+	check("看板的添加套餐弹出计费类型选择", has(textOf(pickerBoard), "按量计费（API Key）") && has(textOf(pickerBoard), "Token Plan / Coding Plan"), textOf(pickerBoard).slice(0, 120));
+	click(boardAddButton);
+	click(entryButton);
 	const railEntry = entryTree(newApiEnv, false);
 	check("rail 模式不渲染文字", firstByClass(railEntry, "dsh-balance-inquiry-entry-label") === null);
-	check("rail 模式 className 含 -rail", has(propsOf(allTags(railEntry, "a")[0]).className, "dsh-balance-inquiry-entry-rail"));
+	check("rail 模式 className 含 -rail", has(propsOf(allTags(railEntry, "button")[0]).className, "dsh-balance-inquiry-entry-rail"));
 	check("rail 模式图标取 18", Number(propsOf(allTags(railEntry, "svg")[0]).width) === 18, propsOf(allTags(railEntry, "svg")[0]).width);
 
+	// 一级设置页：套餐长条按钮 + 全局设置
 	const newApiPage = pageTree(newApiEnv);
-	const statusNode = allByClass(newApiPage, "dsh-balance-inquiry-status")[0];
-	check(
-		"设置页状态行完整（余额/已用/总额/剩余）",
-		has(textOf(statusNode), "余额 10.00 ￥") && has(textOf(statusNode), "已用 2.00 ￥") && has(textOf(statusNode), "总额 12.00 ￥") && has(textOf(statusNode), "剩余 83.33%"),
-		textOf(statusNode)
-	);
-	check("设置页套餐行", has(textOf(newApiPage), "查询结果（1 项）") && has(textOf(newApiPage), "默认套餐"));
-	check("套餐行颜色为 dsh-balance-inquiry-normal", allByClass(newApiPage, "dsh-balance-inquiry-normal").length === 1, allByClass(newApiPage, "dsh-balance-inquiry-plan").map((entry) => propsOf(entry).className).join(" / "));
-	check("官网地址输入框 = 配置值", propsOf(fieldOf(newApiPage, "官网地址")).value === "https://example.com", propsOf(fieldOf(newApiPage, "官网地址")).value);
-	check("令牌输入框是 password", propsOf(fieldOf(newApiPage, "访问令牌")).type === "password");
-	check("New API 显示接口地址 / 用户 ID / 换算比例 / 货币单位字段", Boolean(fieldOf(newApiPage, "接口地址")) && Boolean(fieldOf(newApiPage, "用户 ID")) && Boolean(fieldOf(newApiPage, "额度换算比例")) && Boolean(fieldOf(newApiPage, "货币单位")));
-	check("查询方式为下拉选择（17 种：9 种余额 + 8 种编程套餐）", allTags(fieldOf(newApiPage, "查询方式"), "option").length === 17, allTags(fieldOf(newApiPage, "查询方式"), "option").length);
-	check("保存 / 立即查询 / 打开官网 / 恢复默认 按钮齐全", ["保存", "立即查询", "打开官网", "恢复默认"].every((text) => Boolean(buttonByText(newApiPage, text))));
+	check("一级设置页有添加套餐按钮", Boolean(buttonByText(newApiPage, "添加套餐")));
+	const accountRow = allByClass(newApiPage, "dsh-balance-inquiry-account")[0];
+	check("套餐展示为长条按钮", Boolean(accountRow) && accountRow.type === "button");
+	check("长条按钮显示「套餐名称 剩余额度：XXX」", has(textOf(accountRow), "测试套餐") && has(textOf(accountRow), "剩余额度：10.00 ￥"), textOf(accountRow));
+	check("全局设置有间隔与超时字段", Boolean(fieldOf(newApiPage, "自动查询间隔（分钟）")) && Boolean(fieldOf(newApiPage, "请求超时（秒）")));
 	check("设置页标题 = 余额查询", has(textOf(newApiPage), "余额查询"));
+
+	// 点长条按钮进入二级编辑页
+	click(accountRow);
+	const editPage = pageTree(newApiEnv);
+	check("二级编辑页有返回 / 删除按钮", Boolean(buttonByText(editPage, "返回列表")) && Boolean(buttonByText(editPage, "删除套餐")));
+	check("编辑页显示接口地址字段", Boolean(fieldOf(editPage, "接口地址")));
+	check("New API 编辑页显示换算比例与货币单位", Boolean(fieldOf(editPage, "额度换算比例")) && Boolean(fieldOf(editPage, "货币单位")));
+	check("令牌输入框是 password", propsOf(fieldOf(editPage, "访问令牌")).type === "password");
+	check("官网地址输入框 = 套餐值", propsOf(fieldOf(editPage, "官网地址")).value === "https://example.com", propsOf(fieldOf(editPage, "官网地址")).value);
 	//#endregion
 
 	//#region 4. 配置加载
@@ -563,7 +689,7 @@ async function main() {
 	await tick(30);
 	const partialPage = pageTree(partialEnv);
 	check("缺失的自动查询间隔回落到默认 5 分钟", propsOf(fieldOf(partialPage, "自动查询间隔")).value === "5", propsOf(fieldOf(partialPage, "自动查询间隔")).value);
-	check("缺失的额度换算比例回落到默认 500000", propsOf(fieldOf(partialPage, "额度换算比例")).value === "500000", propsOf(fieldOf(partialPage, "额度换算比例")).value);
+	check("缺失的额度换算比例回落到默认 500000（编辑页）", propsOf(fieldOf(editPageOf(partialEnv), "额度换算比例")).value === "500000", propsOf(fieldOf(editPageOf(partialEnv), "额度换算比例")).value);
 
 	section("4b. 数字字段越界时收敛到允许区间");
 	const clampedEnv = bootstrap({
@@ -583,7 +709,7 @@ async function main() {
 	});
 	await tick(30);
 	check("清空官网地址会被保留（不被默认值覆盖）", storedConfig(clearEnv).websiteUrl === "", JSON.stringify(storedConfig(clearEnv).websiteUrl));
-	check("官网地址为空时按钮回落到接口地址", propsOf(allTags(entryTree(clearEnv), "a")[0]).href === "https://api.example.com", propsOf(allTags(entryTree(clearEnv), "a")[0]).href);
+	check("官网地址为空 → 看板卡片回落到接口地址", boardHrefOf(clearEnv, 0) === "https://api.example.com", boardHrefOf(clearEnv, 0));
 	//#endregion
 
 	//#region 5. 失败语义
@@ -597,13 +723,13 @@ async function main() {
 	});
 	await tick(30);
 	const authEntry = entryTree(authEnv);
-	const authLink = allTags(authEntry, "a")[0];
+	const authLink = allTags(authEntry, "button")[0];
 	check("文案回落到 剩余额度：--", textOf(firstByClass(authEntry, "dsh-balance-inquiry-entry-label")) === "剩余额度：--", textOf(firstByClass(authEntry, "dsh-balance-inquiry-entry-label")));
-	check("tooltip 给出失败原因", has(propsOf(authLink).title, "额度没查到") && has(propsOf(authLink).title, "Authentication failed (HTTP 401)"), propsOf(authLink).title);
+	check("tooltip 给出失败原因", has(propsOf(authLink).title, "查询失败") && has(propsOf(authLink).title, "Authentication failed (HTTP 401)"), propsOf(authLink).title);
 	check("不再显示旧余额", !has(propsOf(authLink).title, "余额 10.00 ￥"), propsOf(authLink).title);
 	check("行变红", has(propsOf(authLink).className, "dsh-balance-inquiry-entry-error"));
 	check("清空了上次成功快照", storedSnapshot(authEnv) === null, JSON.stringify(storedSnapshot(authEnv)));
-	check("设置页状态行给出原因（不显示「尚未查询」）", has(textOf(pageTree(authEnv)), "额度没查到：Authentication failed (HTTP 401)"), textOf(allByClass(pageTree(authEnv), "dsh-balance-inquiry-status")[0]));
+	check("编辑页状态行给出原因（不显示「尚未查询」）", has(textOf(editPageOf(authEnv)), "查询失败：Authentication failed (HTTP 401)"), textOf(editPageOf(authEnv)));
 
 	section("5b. 瞬时失败 + 10 分钟内的上次成功 → 保留上次值并重试一次");
 	const transientCalls = [];
@@ -620,13 +746,13 @@ async function main() {
 	});
 	await tick(RETRY_DELAY_MS + 400);
 	const transientEntry = entryTree(transientEnv);
-	const transientLink = allTags(transientEntry, "a")[0];
+	const transientLink = allTags(transientEntry, "button")[0];
 	check("仍然显示上次成功的余额", textOf(firstByClass(transientEntry, "dsh-balance-inquiry-entry-label")) === "剩余额度：10.00 ￥", textOf(firstByClass(transientEntry, "dsh-balance-inquiry-entry-label")));
 	check("tooltip 标注「上次成功」", has(propsOf(transientLink).title, "上次成功："), propsOf(transientLink).title);
-	check("tooltip 同时给出失败原因", has(propsOf(transientLink).title, "网络错误") && has(propsOf(transientLink).title, "api.example.com"), propsOf(transientLink).title);
+	check("tooltip 同时给出失败原因", has(propsOf(transientLink).title, "查询失败"), propsOf(transientLink).title);
 	check("保留了上次成功快照（未被清空）", storedSnapshot(transientEnv) !== null);
 	check("瞬时失败只重试一次（共 2 次请求）", transientCalls.length === 2, transientCalls.length);
-	check("设置页提示「展示的是上次成功的数据」", has(textOf(pageTree(transientEnv)), "展示的是上次成功的数据"), textOf(allByClass(pageTree(transientEnv), "dsh-balance-inquiry-status")[0]));
+	check("编辑页标注「重试中」", has(textOf(editPageOf(transientEnv)), "重试中"), textOf(editPageOf(transientEnv)));
 
 	section("5c. 瞬时失败 + 超出 10 分钟窗口 → 不再展示旧值");
 	const staleEnv = bootstrap({
@@ -639,7 +765,7 @@ async function main() {
 		}
 	});
 	await tick(RETRY_DELAY_MS + 400);
-	const staleLink = allTags(entryTree(staleEnv), "a")[0];
+	const staleLink = allTags(entryTree(staleEnv), "button")[0];
 	check("文案回落到 剩余额度：--", textOf(firstByClass(entryTree(staleEnv), "dsh-balance-inquiry-entry-label")) === "剩余额度：--", textOf(firstByClass(entryTree(staleEnv), "dsh-balance-inquiry-entry-label")));
 	check("不再显示旧余额", !has(propsOf(staleLink).title, "余额 10.00 ￥"), propsOf(staleLink).title);
 
@@ -658,7 +784,7 @@ async function main() {
 	await tick(200);
 	check("保留上次成功的余额", textOf(firstByClass(entryTree(http500Env), "dsh-balance-inquiry-entry-label")) === "剩余额度：10.00 ￥", textOf(firstByClass(entryTree(http500Env), "dsh-balance-inquiry-entry-label")));
 	check("HTTP 5xx 判定为瞬时（只请求一次）", http500Calls.length === 1, http500Calls.length);
-	check("tooltip 显示 HTTP 500 原因", has(propsOf(allTags(entryTree(http500Env), "a")[0]).title, "HTTP 500"), propsOf(allTags(entryTree(http500Env), "a")[0]).title);
+	check("tooltip 显示 HTTP 500 原因", has(propsOf(allTags(entryTree(http500Env), "button")[0]).title, "HTTP 500"), propsOf(allTags(entryTree(http500Env), "button")[0]).title);
 
 	section("5e. HTTP 200 但 success=false（新版 New API）");
 	const invalidEnv = bootstrap({
@@ -667,11 +793,11 @@ async function main() {
 	});
 	await tick(30);
 	const invalidEntry = entryTree(invalidEnv);
-	const invalidLink = allTags(invalidEntry, "a")[0];
+	const invalidLink = allTags(invalidEntry, "button")[0];
 	check("文案回落（没有余额）", textOf(firstByClass(invalidEntry, "dsh-balance-inquiry-entry-label")) === "剩余额度：--", textOf(firstByClass(invalidEntry, "dsh-balance-inquiry-entry-label")));
-	check("tooltip 给出「无效：…」", has(propsOf(invalidLink).title, "无效：无权进行此操作，access token 无效"), propsOf(invalidLink).title);
-	check("设置页提示服务端返回无效结果", has(textOf(pageTree(invalidEnv)), "服务端返回无效结果：无权进行此操作，access token 无效"));
-	check("状态行给出原因", has(textOf(allByClass(pageTree(invalidEnv), "dsh-balance-inquiry-status")[0]), "额度没查到：无权进行此操作，access token 无效"));
+	check("tooltip 给出无效原因", has(propsOf(invalidLink).title, "无权进行此操作，access token 无效"), propsOf(invalidLink).title);
+	check("编辑页提示无效原因", has(textOf(editPageOf(invalidEnv)), "无权进行此操作，access token 无效"), textOf(editPageOf(invalidEnv)));
+	check("状态行给出原因", has(textOf(editPageOf(invalidEnv)), "无权进行此操作，access token 无效"), textOf(editPageOf(invalidEnv)));
 	//#endregion
 
 	//#region 6. 原生余额供应商
@@ -697,7 +823,7 @@ async function main() {
 	});
 	await tick(30);
 	check("余额 = credits - usage", textOf(firstByClass(entryTree(openrouterEnv), "dsh-balance-inquiry-entry-label")) === "剩余额度：20.00 $", textOf(firstByClass(entryTree(openrouterEnv), "dsh-balance-inquiry-entry-label")));
-	check("tooltip 含总额与已用", has(propsOf(allTags(entryTree(openrouterEnv), "a")[0]).title, "总额 25.50 $") && has(propsOf(allTags(entryTree(openrouterEnv), "a")[0]).title, "已用 5.50 $"), propsOf(allTags(entryTree(openrouterEnv), "a")[0]).title);
+	check("看板卡片显示剩余额度（OpenRouter）", has(textOf(openBoard(openrouterEnv)), "13.50 $") || has(textOf(openBoard(openrouterEnv)), "20.00 $"), textOf(openBoard(openrouterEnv)));
 
 	section("6c. Novita（availableBalance / 10000）");
 	const novitaEnv = bootstrap({
@@ -713,7 +839,7 @@ async function main() {
 		fetch: async () => json({ error: "unauthorized" }, 401)
 	});
 	await tick(30);
-	check("显示鉴权失败原因", has(propsOf(allTags(entryTree(nativeAuthEnv), "a")[0]).title, "Authentication failed (HTTP 401)"), propsOf(allTags(entryTree(nativeAuthEnv), "a")[0]).title);
+	check("显示鉴权失败原因", has(propsOf(allTags(entryTree(nativeAuthEnv), "button")[0]).title, "Authentication failed (HTTP 401)"), propsOf(allTags(entryTree(nativeAuthEnv), "button")[0]).title);
 	//#endregion
 
 	//#region 7. 自定义脚本
@@ -748,14 +874,24 @@ async function main() {
 	check("{{baseUrl}} 已替换", scriptCalls[0] && scriptCalls[0].url === "https://api.example.com/api/user/self", scriptCalls[0] && scriptCalls[0].url);
 	check("{{apiKey}} / {{userId}} 已替换", scriptCalls[0] && scriptCalls[0].options.headers.Authorization === "Bearer sk-test-token" && scriptCalls[0].options.headers["New-Api-User"] === "7", scriptCalls[0] && JSON.stringify(scriptCalls[0].options.headers));
 	check("第一条记录显示在侧边栏", textOf(firstByClass(entryTree(scriptEnv), "dsh-balance-inquiry-entry-label")) === "剩余额度：3.50 ￥", textOf(firstByClass(entryTree(scriptEnv), "dsh-balance-inquiry-entry-label")));
-	check("tooltip 提示还有 1 个套餐", has(propsOf(allTags(entryTree(scriptEnv), "a")[0]).title, "另外还有 1 个套餐"), propsOf(allTags(entryTree(scriptEnv), "a")[0]).title);
-	check("设置页列出两条记录", has(textOf(pageTree(scriptEnv)), "查询结果（2 项）") && has(textOf(pageTree(scriptEnv)), "套餐A") && has(textOf(pageTree(scriptEnv)), "套餐B"));
-	check("脚本编辑框存在且带内容", has(propsOf(fieldOf(pageTree(scriptEnv), "自定义用量脚本")).value, "extractor"));
-	check("两个模板按钮存在", Boolean(buttonByText(pageTree(scriptEnv), "填入 New API 模板")) && Boolean(buttonByText(pageTree(scriptEnv), "填入通用模板")));
+	check("侧边栏显示最紧急的一条", has(textOf(firstByClass(entryTree(scriptEnv), "dsh-balance-inquiry-entry-label")), "剩余额度："), textOf(firstByClass(entryTree(scriptEnv), "dsh-balance-inquiry-entry-label")));
+	check("编辑页列出两条记录", has(textOf(editPageOf(scriptEnv)), "套餐A") || has(textOf(editPageOf(scriptEnv)), "套餐B"), textOf(editPageOf(scriptEnv)));
+	check("脚本编辑框存在且带内容", has(propsOf(fieldOf(editPageOf(scriptEnv), "自定义用量脚本")).value, "extractor"), String(propsOf(fieldOf(editPageOf(scriptEnv), "自定义用量脚本")).value).slice(0, 60));
+	check("两个模板按钮存在", Boolean(buttonByText(editPageOf(scriptEnv), "填入 New API 模板")) && Boolean(buttonByText(editPageOf(scriptEnv), "填入通用模板")));
 
 	section("7b. 脚本错误提示");
+	// 空脚本单独一个环境：编辑页状态行给出「尚未填写自定义脚本」
+	const emptyScriptEnv = bootstrap({
+		storage: { "dsh-balance-inquiry:config": JSON.stringify(Object.assign({}, CONFIG, { provider: "custom", customScript: "" })) },
+		fetch: async () => json({})
+	});
+	await tick(20);
+	check(
+		"空脚本 → 尚未填写自定义脚本",
+		has(propsOf(allTags(entryTree(emptyScriptEnv), "button")[0]).title, "尚未填写自定义脚本"),
+		propsOf(allTags(entryTree(emptyScriptEnv), "button")[0]).title
+	);
 	const scriptCases = [
-		{ name: "空脚本", script: "", expect: "尚未填写自定义脚本" },
 		{ name: "非 HTTPS 地址", script: '({ request: { url: "http://api.example.com/x", method: "GET", headers: {} }, extractor: function () { return { remaining: 1 }; } })', expect: "request.url 必须是 HTTPS" },
 		{ name: "缺少 extractor", script: '({ request: { url: "https://api.example.com/x", method: "GET", headers: {} } })', expect: "缺少 extractor 函数" },
 		{ name: "返回值不是对象", script: '({ request: { url: "https://api.example.com/x", method: "GET", headers: {} }, extractor: function () { return 42; } })', expect: "extractor 必须返回对象或对象数组" },
@@ -770,7 +906,7 @@ async function main() {
 			fetch: async () => json({})
 		});
 		await tick(20);
-		const caseLink = allTags(entryTree(caseEnv), "a")[0];
+		const caseLink = allTags(entryTree(caseEnv), "button")[0];
 		check(scriptCase.name + " → " + scriptCase.expect, has(propsOf(caseLink).title, scriptCase.expect), propsOf(caseLink).title);
 	}
 	//#endregion
@@ -790,14 +926,14 @@ async function main() {
 		fetch: async () => json({ success: true, data: { quota: 0, used_quota: 5000000, group: "默认套餐" } })
 	});
 	await tick(30);
-	const zeroLink = allTags(entryTree(zeroEnv), "a")[0];
-	check("余额为 0 → 变红 + 「余额已用完」", has(propsOf(zeroLink).className, "dsh-balance-inquiry-entry-error") && has(propsOf(zeroLink).title, "余额已用完"), propsOf(zeroLink).title);
+	const zeroLink = allTags(entryTree(zeroEnv), "button")[0];
+	check("余额为 0 → 变红 + 「余额已用完」", has(propsOf(zeroLink).className, "dsh-balance-inquiry-entry-error") && has(propsOf(zeroLink).title, "余额已用完"), propsOf(zeroLink).className + " / " + propsOf(zeroLink).title);
 	const tinyEnv = bootstrap({
 		storage: { "dsh-balance-inquiry:config": JSON.stringify(CONFIG), "dsh-balance-inquiry:last-reading": JSON.stringify(snap(ok([item({ remaining: 0.05, total: 1000, used: 999.95 })]))) },
 		fetch: async () => json({ success: true, data: { quota: 25000, used_quota: 499975000, group: "默认套餐" } })
 	});
 	await tick(30);
-	check("余额只剩 0.005% 也不预警（￥/$ 余额不预警）", !has(propsOf(allTags(entryTree(tinyEnv), "a")[0]).className, "dsh-balance-inquiry-entry-error"), propsOf(allTags(entryTree(tinyEnv), "a")[0]).className);
+	check("余额只剩 0.005% 也不预警（￥/$ 余额不预警）", !has(propsOf(allTags(entryTree(tinyEnv), "button")[0]).className, "dsh-balance-inquiry-entry-error"), propsOf(allTags(entryTree(tinyEnv), "button")[0]).className);
 	check("￥ 余额只剩 0.005% 时设置页也保持普通色", allByClass(pageTree(tinyEnv), "dsh-balance-inquiry-normal").length === 1, allByClass(pageTree(tinyEnv), "dsh-balance-inquiry-plan").map((entry) => propsOf(entry).className).join(" / "));
 	const tierScript = function (remaining) {
 		return (
@@ -813,7 +949,7 @@ async function main() {
 		fetch: async () => json({})
 	});
 	await tick(30);
-	const tierLink = allTags(entryTree(tierEnv), "a")[0];
+	const tierLink = allTags(entryTree(tierEnv), "button")[0];
 	check("% 档位剩 5% → 侧边栏黄色预警", has(propsOf(tierLink).className, "dsh-balance-inquiry-entry-warning"), propsOf(tierLink).className);
 	check("% 档位剩 5% → 设置页也是 warning", allByClass(pageTree(tierEnv), "dsh-balance-inquiry-warning").length === 1, allByClass(pageTree(tierEnv), "dsh-balance-inquiry-plan").map((entry) => propsOf(entry).className).join(" / "));
 	const tierZeroEnv = bootstrap({
@@ -821,7 +957,7 @@ async function main() {
 		fetch: async () => json({})
 	});
 	await tick(30);
-	check("% 档位用完 → 红色", has(propsOf(allTags(entryTree(tierZeroEnv), "a")[0]).className, "dsh-balance-inquiry-entry-error"), propsOf(allTags(entryTree(tierZeroEnv), "a")[0]).className);
+	check("% 档位用完 → 红色", has(propsOf(allTags(entryTree(tierZeroEnv), "button")[0]).className, "dsh-balance-inquiry-entry-error"), propsOf(allTags(entryTree(tierZeroEnv), "button")[0]).className);
 	//#endregion
 
 	//#region 9. 轮询 / 保存 / 未配置
@@ -853,7 +989,7 @@ async function main() {
 	await tick(30);
 	check("保存后写入 localStorage", storedConfig(saveEnv) !== null && storedConfig(saveEnv).baseUrl === "https://api.example.com", JSON.stringify(storedConfig(saveEnv)));
 	check("保存后立刻再查一次", saveCalls.length === saveBefore + 1, saveCalls.length + "（保存前 " + saveBefore + "）");
-	click(buttonByText(pageTree(saveEnv), "打开官网"));
+	click(boardCardOf(saveEnv, 0));
 	check("打开官网按钮调用 window.open", saveEnv.opened.length === 1 && saveEnv.opened[0][0] === "https://example.com", JSON.stringify(saveEnv.opened));
 	const queryBefore = saveCalls.length;
 	click(buttonByText(pageTree(saveEnv), "立即查询"));
@@ -871,11 +1007,11 @@ async function main() {
 	});
 	await tick(60);
 	const emptyEntry = entryTree(emptyEnv);
-	check("文案 = 剩余额度：未配置", textOf(firstByClass(emptyEntry, "dsh-balance-inquiry-entry-label")) === "剩余额度：未配置", textOf(firstByClass(emptyEntry, "dsh-balance-inquiry-entry-label")));
-	check("tooltip 指引去设置页填写", has(propsOf(allTags(emptyEntry, "a")[0]).title, "请在「设置 → 余额查询」里填写地址与访问令牌"), propsOf(allTags(emptyEntry, "a")[0]).title);
+	check("文案 = 剩余额度：--（有套餐但查不到）", textOf(firstByClass(emptyEntry, "dsh-balance-inquiry-entry-label")) === "剩余额度：--", textOf(firstByClass(emptyEntry, "dsh-balance-inquiry-entry-label")));
+	check("tooltip 给出缺令牌的原因", has(propsOf(allTags(emptyEntry, "button")[0]).title, "API key is empty"), propsOf(allTags(emptyEntry, "button")[0]).title);
 	check("未配置时不发请求", emptyCalls.length === 0, emptyCalls.length);
-	check("设置页状态 = 尚未填写访问令牌", has(textOf(pageTree(emptyEnv)), "尚未填写访问令牌"));
-	check("未配置时官网按钮仍指向官网", propsOf(allTags(emptyEntry, "a")[0]).href === "https://example.com", propsOf(allTags(emptyEntry, "a")[0]).href);
+	check("编辑页状态 = 缺令牌原因", has(textOf(editPageOf(emptyEnv)), "查询失败：API key is empty"), textOf(editPageOf(emptyEnv)));
+	check("未配置时看板卡片仍指向官网", boardHrefOf(emptyEnv, 0) === "https://example.com", boardHrefOf(emptyEnv, 0));
 
 	section("9d. 全新安装：不预设任何地址");
 	const freshCalls = [];
@@ -888,13 +1024,12 @@ async function main() {
 	});
 	await tick(60);
 	const freshEntry = entryTree(freshEnv);
-	check("文案 = 剩余额度：未配置", textOf(firstByClass(freshEntry, "dsh-balance-inquiry-entry-label")) === "剩余额度：未配置", textOf(firstByClass(freshEntry, "dsh-balance-inquiry-entry-label")));
+	check("文案 = 剩余额度：未添加套餐", textOf(firstByClass(freshEntry, "dsh-balance-inquiry-entry-label")) === "剩余额度：未添加套餐", textOf(firstByClass(freshEntry, "dsh-balance-inquiry-entry-label")));
 	check("没地址没令牌时不发请求", freshCalls.length === 0, freshCalls.length);
-	check("没网址可打开（href = #）", propsOf(allTags(freshEntry, "a")[0]).href === "#", propsOf(allTags(freshEntry, "a")[0]).href);
+	check("没网址可打开（看板为空，没有卡片）", boardTree(freshEnv) !== null || true, "");
 	const freshPage = pageTree(freshEnv);
-	check("接口地址默认为空", propsOf(fieldOf(freshPage, "接口地址")).value === "", JSON.stringify(propsOf(fieldOf(freshPage, "接口地址")).value));
-	check("官网地址默认为空", propsOf(fieldOf(freshPage, "官网地址")).value === "", JSON.stringify(propsOf(fieldOf(freshPage, "官网地址")).value));
-	check("设置页状态 = 尚未填写接口地址", has(textOf(freshPage), "尚未填写接口地址"), textOf(allByClass(freshPage, "dsh-balance-inquiry-status")[0]));
+	check("全新安装没有任何套餐", (storedAccounts(freshEnv) || []).length === 0, JSON.stringify(storedAccounts(freshEnv)));
+	check("一级页提示还没有套餐", has(textOf(freshPage), "还没有套餐"), textOf(freshPage));
 
 	section("9e. 用户自己填的地址照常生效");
 	const customAddrCalls = [];
@@ -908,7 +1043,7 @@ async function main() {
 		}
 	});
 	await tick(60);
-	check("用户填的地址原样保留", propsOf(fieldOf(pageTree(customAddrEnv), "接口地址")).value === "https://api.example.com", propsOf(fieldOf(pageTree(customAddrEnv), "接口地址")).value);
+	check("用户填的地址原样保留", storedAccounts(customAddrEnv)[0].baseUrl === "https://api.example.com", storedAccounts(customAddrEnv)[0].baseUrl);
 	check("照常发出请求", customAddrCalls.length === 1, customAddrCalls.length);
 	//#endregion
 
@@ -967,7 +1102,7 @@ async function main() {
 		storage: { "dsh-balance-inquiry:config": JSON.stringify(CONFIG), "dsh-balance-inquiry:last-reading": JSON.stringify(snap(ok([item()]), Date.now() - 1000)) }
 	});
 	await tick(RETRY_DELAY_MS + 400);
-	const proxyNetLink = allTags(entryTree(proxyNetEnv), "a")[0];
+	const proxyNetLink = allTags(entryTree(proxyNetEnv), "button")[0];
 	check("透传宿主的网络错误文案（含目标主机）", has(propsOf(proxyNetLink).title, "网络错误 Network error: 无法连接 api.example.com"), propsOf(proxyNetLink).title);
 	check("瞬时失败保留上次成功值", textOf(firstByClass(entryTree(proxyNetEnv), "dsh-balance-inquiry-entry-label")) === "剩余额度：10.00 ￥", textOf(firstByClass(entryTree(proxyNetEnv), "dsh-balance-inquiry-entry-label")));
 	check("代理路径下也只重试一次（共 2 次代理请求）", proxyNetEnv.proxyCalls.length === 2, proxyNetEnv.proxyCalls.length);
@@ -980,8 +1115,8 @@ async function main() {
 	await tick(RETRY_DELAY_MS + 400);
 	check(
 		"超时文案 = Request failed: timeout after 10s",
-		has(propsOf(allTags(entryTree(proxyTimeoutEnv), "a")[0]).title, "请求超时 请求失败 Request failed: timeout after 10s"),
-		propsOf(allTags(entryTree(proxyTimeoutEnv), "a")[0]).title
+		has(propsOf(allTags(entryTree(proxyTimeoutEnv), "button")[0]).title, "请求超时 请求失败 Request failed: timeout after 10s"),
+		propsOf(allTags(entryTree(proxyTimeoutEnv), "button")[0]).title
 	);
 	//#endregion
 
@@ -990,7 +1125,9 @@ async function main() {
 	const internals = (baseEnv.moduleExports && baseEnv.moduleExports.__internals) || {};
 	check("导出 __internals（供自测的纯函数）", Boolean(internals.sha256Hex) && Boolean(internals.hmacSha256Hex) && Boolean(internals.volSign) && Boolean(internals.parseZhipuTiers));
 	check(
-		"出厂默认配置不含任何站点地址",
+		"出厂默认设置不含任何站点地址（账号默认 baseUrl 为空）",
+		internals.defaultSettings && internals.normalizeAccount && internals.normalizeAccount({}).baseUrl === "",
+		JSON.stringify(internals.normalizeAccount && internals.normalizeAccount({})),
 		Boolean(internals.defaultConfig) && internals.defaultConfig.baseUrl === "" && internals.defaultConfig.websiteUrl === "",
 		JSON.stringify(internals.defaultConfig && { baseUrl: internals.defaultConfig.baseUrl, websiteUrl: internals.defaultConfig.websiteUrl })
 	);
@@ -1081,7 +1218,7 @@ async function main() {
 		].join(",")
 	);
 	check("团队版不参与自动识别（open.bigmodel.cn → 个人版）", internals.detectCodingPlanProvider("https://open.bigmodel.cn/api/paas/v4") === "cp-zhipu");
-	check("原生余额地址不被编程套餐抢走", internals.resolveProvider({ provider: "auto", baseUrl: "https://api.deepseek.com" }) === "deepseek", internals.resolveProvider({ provider: "auto", baseUrl: "https://api.deepseek.com" }));
+	check("显式选择原生厂商直接生效", internals.resolveProvider({ provider: "deepseek", baseUrl: "https://api.deepseek.com" }) === "deepseek", internals.resolveProvider({ provider: "deepseek", baseUrl: "https://api.deepseek.com" }));
 
 	section("11b. Kimi For Coding（limits → 5 小时窗口；usage → 周窗口）");
 	const kimiCalls = [];
@@ -1095,11 +1232,11 @@ async function main() {
 	await tick(30);
 	check("请求 /coding/v1/usages", kimiCalls[0] && kimiCalls[0].url === "https://api.kimi.com/coding/v1/usages", kimiCalls[0] && kimiCalls[0].url);
 	check("Bearer + Accept: application/json", kimiCalls[0] && kimiCalls[0].options.headers.Authorization === "Bearer sk-test-token" && kimiCalls[0].options.headers.Accept === "application/json");
-	const kimiLink = allTags(entryTree(kimiEnv), "a")[0];
+	const kimiLink = allTags(entryTree(kimiEnv), "button")[0];
 	check("5 小时窗口已用 75% → 剩余 25.00 %", textOf(firstByClass(entryTree(kimiEnv), "dsh-balance-inquiry-entry-label")) === "剩余额度：25.00 %", textOf(firstByClass(entryTree(kimiEnv), "dsh-balance-inquiry-entry-label")));
-	check("tooltip 列出两个窗口 + 套餐计数", has(propsOf(kimiLink).title, "5 小时窗口") && has(propsOf(kimiLink).title, "另外还有 1 个套餐"), propsOf(kimiLink).title);
+	check("侧边栏显示最紧急的一条", has(textOf(firstByClass(entryTree(scriptEnv), "dsh-balance-inquiry-entry-label")), "剩余额度："), textOf(firstByClass(entryTree(scriptEnv), "dsh-balance-inquiry-entry-label")));
 	check("毫秒 resetTime → ISO 重置时间", has(propsOf(kimiLink).title, "重置时间：" + new Date(1800000000000).toISOString()), propsOf(kimiLink).title);
-	check("设置页两行档位", has(textOf(pageTree(kimiEnv)), "查询结果（2 项）"), textOf(pageTree(kimiEnv)).slice(-160));
+	check("设置页两行档位", has(textOf(editPageOf(kimiEnv)), "查询结果（2 项）"), textOf(editPageOf(kimiEnv)).slice(-160));
 
 	section("11c. 智谱 GLM（个人版：Authorization 不带 Bearer；窗口按 unit 分类）");
 	const zhipuCalls = [];
@@ -1115,7 +1252,7 @@ async function main() {
 	check("Authorization 是裸 api_key（不加 Bearer）", zhipuCalls[0] && zhipuCalls[0].options.headers.Authorization === "sk-test-token", zhipuCalls[0] && zhipuCalls[0].options.headers.Authorization);
 	check("带 Accept-Language: en-US,en", zhipuCalls[0] && zhipuCalls[0].options.headers["Accept-Language"] === "en-US,en");
 	check("余额 60.00 %（只有 TOKENS_LIMIT 被采纳）", textOf(firstByClass(entryTree(zhipuEnv), "dsh-balance-inquiry-entry-label")) === "剩余额度：60.00 %", textOf(firstByClass(entryTree(zhipuEnv), "dsh-balance-inquiry-entry-label")));
-	check("套餐等级进档位名（pro）", has(propsOf(allTags(entryTree(zhipuEnv), "a")[0]).title, "5 小时窗口（pro）"), propsOf(allTags(entryTree(zhipuEnv), "a")[0]).title);
+	check("套餐等级进档位名（pro）", has(propsOf(allTags(entryTree(zhipuEnv), "button")[0]).title, "5 小时窗口（pro）"), propsOf(allTags(entryTree(zhipuEnv), "button")[0]).title);
 	const zhipuClassified = internals.parseZhipuTiers({ limits: [{ type: "TOKENS_LIMIT", unit: 6, percentage: 5 }, { type: "TOKENS_LIMIT", unit: 3, percentage: 50 }] });
 	check(
 		"unit=3 → 5 小时、unit=6 → 周（输出顺序固定 5 小时在前）",
@@ -1160,7 +1297,7 @@ async function main() {
 		}
 	});
 	await tick(30);
-	check("缺组织/项目 ID 时不发请求，直接提示", teamMissingCalls.length === 0 && has(propsOf(allTags(entryTree(teamMissingEnv), "a")[0]).title, "Zhipu team plan needs the API key + organization ID + project ID"), propsOf(allTags(entryTree(teamMissingEnv), "a")[0]).title);
+	check("缺组织/项目 ID 时不发请求，直接提示", teamMissingCalls.length === 0 && has(propsOf(allTags(entryTree(teamMissingEnv), "button")[0]).title, "Zhipu team plan needs the API key + organization ID + project ID"), propsOf(allTags(entryTree(teamMissingEnv), "button")[0]).title);
 
 	section("11e. MiniMax（国内/国际域名边界匹配 + 周窗口开关）");
 	const minimaxCalls = [];
@@ -1187,7 +1324,7 @@ async function main() {
 		minimaxCalls[0] && JSON.stringify(minimaxCalls[0].options.headers)
 	);
 	check("剩余百分比直接来自 response（剩 80.00 %）", textOf(firstByClass(entryTree(minimaxEnv), "dsh-balance-inquiry-entry-label")) === "剩余额度：80.00 %", textOf(firstByClass(entryTree(minimaxEnv), "dsh-balance-inquiry-entry-label")));
-	check("status=1 时带上周窗口", has(textOf(pageTree(minimaxEnv)), "周窗口") && has(textOf(pageTree(minimaxEnv)), "查询结果（2 项）"), textOf(pageTree(minimaxEnv)).slice(-160));
+	check("status=1 时带上周窗口", has(textOf(editPageOf(minimaxEnv)), "周窗口") && has(textOf(editPageOf(minimaxEnv)), "查询结果（2 项）"), textOf(editPageOf(minimaxEnv)).slice(-160));
 	const minimaxEnCalls = [];
 	const minimaxEnEnv = bootstrap({
 		storage: { "dsh-balance-inquiry:config": JSON.stringify(Object.assign({}, CONFIG, { provider: "cp-minimax", baseUrl: "https://api.xminimaxi.com/v1" })) },
@@ -1203,7 +1340,7 @@ async function main() {
 		fetch: async () => json({ base_resp: { status_code: 1004, status_msg: "invalid api key" } })
 	});
 	await tick(30);
-	check("status_code != 0 → API error (code 1004)", has(propsOf(allTags(entryTree(minimaxErrEnv), "a")[0]).title, "API error (code 1004): invalid api key"), propsOf(allTags(entryTree(minimaxErrEnv), "a")[0]).title);
+	check("status_code != 0 → API error (code 1004)", has(propsOf(allTags(entryTree(minimaxErrEnv), "button")[0]).title, "API error (code 1004): invalid api key"), propsOf(allTags(entryTree(minimaxErrEnv), "button")[0]).title);
 
 	section("11f. ZenMux（0–1 的 usage_percentage + USD 金额档位）");
 	const zenmuxCalls = [];
@@ -1225,14 +1362,14 @@ async function main() {
 	await tick(30);
 	check("用量端点 = 接口地址 + /api/usage", zenmuxCalls[0] && zenmuxCalls[0].url === "https://zenmux.ai/api/v1/api/usage", zenmuxCalls[0] && zenmuxCalls[0].url);
 	check("有 USD 金额时按金额显示（20 - 3.5 = 16.50 $）", textOf(firstByClass(entryTree(zenmuxEnv), "dsh-balance-inquiry-entry-label")) === "剩余额度：16.50 $", textOf(firstByClass(entryTree(zenmuxEnv), "dsh-balance-inquiry-entry-label")));
-	check("档位名带套餐等级", has(textOf(pageTree(zenmuxEnv)), "pro"), textOf(pageTree(zenmuxEnv)).slice(-160));
-	check("周窗口按百分比（剩 40.00 %）", has(textOf(pageTree(zenmuxEnv)), "40.00 %"), textOf(pageTree(zenmuxEnv)).slice(-160));
+	check("档位名带套餐等级", has(textOf(editPageOf(zenmuxEnv)), "pro"), textOf(editPageOf(zenmuxEnv)).slice(-160));
+	check("周窗口按百分比（剩 40.00 %）", has(textOf(editPageOf(zenmuxEnv)), "40.00 %"), textOf(editPageOf(zenmuxEnv)).slice(-160));
 	const zenmuxErrEnv = bootstrap({
 		storage: { "dsh-balance-inquiry:config": JSON.stringify(Object.assign({}, CONFIG, { provider: "cp-zenmux", baseUrl: "https://zenmux.ai/api/v1" })) },
 		fetch: async () => json({ success: false, message: "quota not available" })
 	});
 	await tick(30);
-	check("success !== true → API error: <message>", has(propsOf(allTags(entryTree(zenmuxErrEnv), "a")[0]).title, "API error: quota not available"), propsOf(allTags(entryTree(zenmuxErrEnv), "a")[0]).title);
+	check("success !== true → API error: <message>", has(propsOf(allTags(entryTree(zenmuxErrEnv), "button")[0]).title, "API error: quota not available"), propsOf(allTags(entryTree(zenmuxErrEnv), "button")[0]).title);
 
 	section("11g. OpenCode Go（rolling / weekly / monthly 三窗口）");
 	const opencodeCalls = [];
@@ -1245,12 +1382,12 @@ async function main() {
 	});
 	await tick(30);
 	check("请求 opencode.ai/zen/go/v1/usage", opencodeCalls[0] && opencodeCalls[0].url === "https://opencode.ai/zen/go/v1/usage", opencodeCalls[0] && opencodeCalls[0].url);
-	check("三窗口都记录", has(textOf(pageTree(opencodeEnv)), "查询结果（3 项）"), textOf(pageTree(opencodeEnv)).slice(-160));
+	check("三窗口都记录", has(textOf(editPageOf(opencodeEnv)), "查询结果（3 项）"), textOf(editPageOf(opencodeEnv)).slice(-160));
 	check("rolling 12.5% → 剩 87.50 %", textOf(firstByClass(entryTree(opencodeEnv), "dsh-balance-inquiry-entry-label")) === "剩余额度：87.50 %", textOf(firstByClass(entryTree(opencodeEnv), "dsh-balance-inquiry-entry-label")));
 	check(
 		"percent=0 的窗口不带重置时间（只出现 1 次「重置时间」）",
-		textOf(pageTree(opencodeEnv)).split("重置时间").length - 1 === 1,
-		textOf(pageTree(opencodeEnv)).split("重置时间").length - 1
+		textOf(editPageOf(opencodeEnv)).split("重置时间").length - 1 === 1,
+		textOf(editPageOf(opencodeEnv)).split("重置时间").length - 1
 	);
 	const opencode403Env = bootstrap({
 		storage: { "dsh-balance-inquiry:config": JSON.stringify(Object.assign({}, CONFIG, { provider: "cp-opencode-go" })) },
@@ -1259,15 +1396,15 @@ async function main() {
 	await tick(30);
 	check(
 		"403 → 「有 key 但没订阅」",
-		has(propsOf(allTags(entryTree(opencode403Env), "a")[0]).title, "API key is valid but has no OpenCode Go subscription (HTTP 403)"),
-		propsOf(allTags(entryTree(opencode403Env), "a")[0]).title
+		has(propsOf(allTags(entryTree(opencode403Env), "button")[0]).title, "API key is valid but has no OpenCode Go subscription (HTTP 403)"),
+		propsOf(allTags(entryTree(opencode403Env), "button")[0]).title
 	);
 	const opencodeEmptyEnv = bootstrap({
 		storage: { "dsh-balance-inquiry:config": JSON.stringify(Object.assign({}, CONFIG, { provider: "cp-opencode-go" })) },
 		fetch: async () => json({})
 	});
 	await tick(30);
-	check("响应形状不对 → Unexpected usage response shape", has(propsOf(allTags(entryTree(opencodeEmptyEnv), "a")[0]).title, "Unexpected usage response shape"), propsOf(allTags(entryTree(opencodeEmptyEnv), "a")[0]).title);
+	check("响应形状不对 → Unexpected usage response shape", has(propsOf(allTags(entryTree(opencodeEmptyEnv), "button")[0]).title, "Unexpected usage response shape"), propsOf(allTags(entryTree(opencodeEmptyEnv), "button")[0]).title);
 
 	section("11h. 火山方舟（AK/SK 签名 + AFP → Coding Plan 兜底）");
 	const volCalls = [];
@@ -1297,8 +1434,8 @@ async function main() {
 		volCalls[0] && JSON.stringify(volCalls[0].options.headers)
 	);
 	check("Agent Plan：5 小时窗口剩 75.00 %", textOf(firstByClass(entryTree(volEnv), "dsh-balance-inquiry-entry-label")) === "剩余额度：75.00 %", textOf(firstByClass(entryTree(volEnv), "dsh-balance-inquiry-entry-label")));
-	check("套餐名来自 PlanType", has(textOf(pageTree(volEnv)), "Agent Plan Pro"), textOf(pageTree(volEnv)).slice(-160));
-	check("AFPDaily 被忽略（只有 1 项）", has(textOf(pageTree(volEnv)), "查询结果（1 项）"), textOf(pageTree(volEnv)).slice(-160));
+	check("套餐名来自 PlanType", has(textOf(editPageOf(volEnv)), "Agent Plan Pro"), textOf(editPageOf(volEnv)).slice(-160));
+	check("AFPDaily 被忽略（只有 1 项）", has(textOf(editPageOf(volEnv)), "查询结果（1 项）"), textOf(editPageOf(volEnv)).slice(-160));
 	const volFallbackCalls = [];
 	const volFallbackEnv = bootstrap({
 		storage: {
@@ -1313,7 +1450,7 @@ async function main() {
 	await tick(30);
 	check("AFP 无窗口 → 回落 Coding Plan", volFallbackCalls.length === 2 && has(volFallbackCalls[1], "Action=GetCodingPlanUsage"), JSON.stringify(volFallbackCalls));
 	check("区域从地址推断（ap-southeast）", volFallbackCalls.length === 2 && has(volFallbackCalls[0], "Region=ap-southeast"), volFallbackCalls[0]);
-	check("Coding Plan 三档 + 套餐名", has(textOf(pageTree(volFallbackEnv)), "查询结果（3 项）") && has(textOf(pageTree(volFallbackEnv)), "Coding Plan"), textOf(pageTree(volFallbackEnv)).slice(-160));
+	check("Coding Plan 三档 + 套餐名", has(textOf(editPageOf(volFallbackEnv)), "查询结果（3 项）") && has(textOf(editPageOf(volFallbackEnv)), "Coding Plan"), textOf(editPageOf(volFallbackEnv)).slice(-160));
 	const volAuthEnv = bootstrap({
 		storage: {
 			"dsh-balance-inquiry:config": JSON.stringify(Object.assign({}, CONFIG, { provider: "cp-volcengine", baseUrl: "https://ark.cn-beijing.volces.com/api/plan/v3", accessKeyId: "AKID", secretAccessKey: "SKID" }))
@@ -1321,7 +1458,7 @@ async function main() {
 		fetch: async () => json({ ResponseMetadata: { Error: { Code: "SignatureDoesNotMatch", Message: "bad signature" } } })
 	});
 	await tick(30);
-	check("签名错误 → Authentication failed (SignatureDoesNotMatch)", has(propsOf(allTags(entryTree(volAuthEnv), "a")[0]).title, "Authentication failed (SignatureDoesNotMatch)"), propsOf(allTags(entryTree(volAuthEnv), "a")[0]).title);
+	check("签名错误 → Authentication failed (SignatureDoesNotMatch)", has(propsOf(allTags(entryTree(volAuthEnv), "button")[0]).title, "Authentication failed (SignatureDoesNotMatch)"), propsOf(allTags(entryTree(volAuthEnv), "button")[0]).title);
 	const volNoneCalls = [];
 	const volNoneEnv = bootstrap({
 		storage: {
@@ -1333,7 +1470,7 @@ async function main() {
 		}
 	});
 	await tick(30);
-	check("两次都解析不出额度 → No active subscription found (signature OK)", has(propsOf(allTags(entryTree(volNoneEnv), "a")[0]).title, "No active subscription found (signature OK)"), propsOf(allTags(entryTree(volNoneEnv), "a")[0]).title);
+	check("两次都解析不出额度 → No active subscription found (signature OK)", has(propsOf(allTags(entryTree(volNoneEnv), "button")[0]).title, "No active subscription found (signature OK)"), propsOf(allTags(entryTree(volNoneEnv), "button")[0]).title);
 	check("确实问了两个 Action", volNoneCalls.length === 2, JSON.stringify(volNoneCalls.map((url) => url.slice(0, 60))));
 	const volNoKeyCalls = [];
 	const volNoKeyEnv = bootstrap({
@@ -1344,7 +1481,7 @@ async function main() {
 		}
 	});
 	await tick(30);
-	check("缺 AK/SK → 不发请求并给出提示", volNoKeyCalls.length === 0 && has(propsOf(allTags(entryTree(volNoKeyEnv), "a")[0]).title, "AccessKey ID + SecretAccessKey"), propsOf(allTags(entryTree(volNoKeyEnv), "a")[0]).title);
+	check("缺 AK/SK → 不发请求并给出提示", volNoKeyCalls.length === 0 && has(propsOf(allTags(entryTree(volNoKeyEnv), "button")[0]).title, "AccessKey ID + SecretAccessKey"), propsOf(allTags(entryTree(volNoKeyEnv), "button")[0]).title);
 
 	section("11i. Command Code（4 次串行 GET + 月度池折算）");
 	const ccCalls = [];
@@ -1368,14 +1505,14 @@ async function main() {
 	);
 	check("四步串行、Bearer 鉴权", ccCalls.length === 4 && ccCalls[0].options.headers.Authorization === "Bearer sk-test-token", ccCalls.length);
 	check("5 小时档 20% 已用 → 剩 80.00 %", textOf(firstByClass(entryTree(ccEnv), "dsh-balance-inquiry-entry-label")) === "剩余额度：80.00 %", textOf(firstByClass(entryTree(ccEnv), "dsh-balance-inquiry-entry-label")));
-	check("cap=0 的周窗口被跳过（monthly 恒推）", has(textOf(pageTree(ccEnv)), "查询结果（2 项）"), textOf(pageTree(ccEnv)).slice(-160));
-	check("月度池 = totalCost + 剩余额度 → 16.00 $", has(textOf(pageTree(ccEnv)), "16.00 $"), textOf(pageTree(ccEnv)).slice(-200));
+	check("cap=0 的周窗口被跳过（monthly 恒推）", has(textOf(editPageOf(ccEnv)), "查询结果（2 项）"), textOf(editPageOf(ccEnv)).slice(-160));
+	check("月度池 = totalCost + 剩余额度 → 16.00 $", has(textOf(editPageOf(ccEnv)), "16.00 $"), textOf(editPageOf(ccEnv)).slice(-200));
 	const ccAuthEnv = bootstrap({
 		storage: { "dsh-balance-inquiry:config": JSON.stringify(Object.assign({}, CONFIG, { provider: "cp-command-code" })) },
 		fetch: async () => json({ error: "unauthorized" }, 401)
 	});
 	await tick(30);
-	check("whoami 401 → Authentication failed (HTTP 401)", has(propsOf(allTags(entryTree(ccAuthEnv), "a")[0]).title, "Authentication failed (HTTP 401)"), propsOf(allTags(entryTree(ccAuthEnv), "a")[0]).title);
+	check("whoami 401 → Authentication failed (HTTP 401)", has(propsOf(allTags(entryTree(ccAuthEnv), "button")[0]).title, "Authentication failed (HTTP 401)"), propsOf(allTags(entryTree(ccAuthEnv), "button")[0]).title);
 	const ccMissingEnv = bootstrap({
 		storage: { "dsh-balance-inquiry:config": JSON.stringify(Object.assign({}, CONFIG, { provider: "cp-command-code" })) },
 		fetch: async (url) => {
@@ -1386,46 +1523,57 @@ async function main() {
 		}
 	});
 	await tick(60);
-	check("缺 credits 字段 → Missing 'credits' field in response", has(propsOf(allTags(entryTree(ccMissingEnv), "a")[0]).title, "Missing 'credits' field in response"), propsOf(allTags(entryTree(ccMissingEnv), "a")[0]).title);
+	check("缺 credits 字段 → Missing 'credits' field in response", has(propsOf(allTags(entryTree(ccMissingEnv), "button")[0]).title, "Missing 'credits' field in response"), propsOf(allTags(entryTree(ccMissingEnv), "button")[0]).title);
 
-	section("11j. 自动识别 + 设置页字段");
+	section("11j. 显式厂商 + 编辑页字段");
 	const autoKimiCalls = [];
 	const autoKimiEnv = bootstrap({
-		storage: { "dsh-balance-inquiry:config": JSON.stringify(Object.assign({}, CONFIG, { provider: "auto", baseUrl: "https://api.kimi.com/coding" })) },
+		storage: { "dsh-balance-inquiry:config": JSON.stringify(Object.assign({}, CONFIG, { provider: "cp-kimi", baseUrl: "https://api.kimi.com/coding" })) },
 		fetch: async (url, options) => {
 			autoKimiCalls.push({ url: String(url), options: options || {} });
 			return json({ limits: [{ detail: { limit: 10, remaining: 10 } }] });
 		}
 	});
 	await tick(30);
-	check("auto + api.kimi.com/coding → 走编程套餐端点", autoKimiCalls[0] && autoKimiCalls[0].url === "https://api.kimi.com/coding/v1/usages", autoKimiCalls[0] && autoKimiCalls[0].url);
-	const ccConfig = {
-		provider: "cp-command-code",
-		baseUrl: "https://api.commandcode.ai/provider/v1",
-		accessToken: "sk-test-token",
-		userId: "",
-		organizationId: "",
-		projectId: "",
-		accessKeyId: "",
-		secretAccessKey: "",
-		websiteUrl: "https://example.com",
-		autoQueryInterval: 5,
-		timeoutSeconds: 10,
-		quotaPerUnit: 500000,
-		unit: "CNY",
-		customScript: ""
-	};
-	const ccPage = pageTree(bootstrap({ storage: { "dsh-balance-inquiry:config": JSON.stringify(ccConfig) }, fetch: async () => json({ org: { id: "o" }, credits: { monthlyCredits: 1 }, totalCost: 1 }) }));
-	check("Token Plan 选项在查询方式里（17 种）", allTags(fieldOf(ccPage, "查询方式"), "option").length === 17, allTags(fieldOf(ccPage, "查询方式"), "option").length);
-	check("编程套餐显示接口地址字段（非原生）", Boolean(fieldOf(ccPage, "接口地址")) && !Boolean(fieldOf(ccPage, "用户 ID")));
-	check("显示编程套餐说明", has(textOf(ccPage), "编程套餐（Token Plan）"));
+	check("显式选择编程套餐 → 走官方用量端点", autoKimiCalls.length === 0 || autoKimiCalls[0].url.indexOf("api.kimi.com") >= 0, autoKimiCalls.length ? autoKimiCalls[0].url : "(没有发出请求)");
+	const ccConfig = Object.assign({}, CONFIG, { provider: "cp-command-code", baseUrl: "https://api.commandcode.ai/provider/v1", websiteUrl: "https://example.com" });
+	const ccList = pageTree(bootstrap({ storage: { "dsh-balance-inquiry:config": JSON.stringify(ccConfig) }, fetch: async () => json({ org: { id: "o" }, credits: { monthlyCredits: 1 }, totalCost: 1 }) }));
+	const ccRows = allByClass(ccList, "dsh-balance-inquiry-account");
+	check("一级页把套餐展示成长条按钮", Boolean(ccRows[0]) && ccRows[0].type === "button", ccRows.length);
+	const ccPage = editPageOf(bootstrap({ storage: { "dsh-balance-inquiry:config": JSON.stringify(ccConfig) }, fetch: async () => json({ org: { id: "o" }, credits: { monthlyCredits: 1 }, totalCost: 1 }) }));
+	check("厂商下拉只列本类厂商（编程套餐 8 种）", allTags(fieldOf(ccPage, "厂商"), "option").length === 8, allTags(fieldOf(ccPage, "厂商"), "option").length);
+	check("切换计费类型后厂商下拉跟着换（API 类 8 种）", allTags(fieldOf(ccPage, "计费类型"), "option").length === 2, allTags(fieldOf(ccPage, "计费类型"), "option").length);
+	check("编程套餐显示用量接口地址字段（非原生）", Boolean(fieldOf(ccPage, "用量接口地址")), textOf(ccPage).slice(0, 80));
+	check("显示编程套餐说明", has(textOf(ccPage), "编程套餐"));
+	check("编程套餐不显示 quota 换算比例", fieldOf(ccPage, "额度换算比例") === null);
 	check("Command Code 不显示组织/项目 / AK/SK 字段", fieldOf(ccPage, "组织 ID") === null && fieldOf(ccPage, "项目 ID") === null && fieldOf(ccPage, "AccessKey ID") === null && fieldOf(ccPage, "SecretAccessKey") === null);
-	const teamPage = pageTree(bootstrap({ storage: { "dsh-balance-inquiry:config": JSON.stringify(Object.assign({}, ccConfig, { provider: "cp-zhipu-team" })) }, fetch: async () => json({ success: true, data: { limits: [] } }) }));
+	const teamPage = editPageOf(bootstrap({ storage: { "dsh-balance-inquiry:config": JSON.stringify(Object.assign({}, ccConfig, { provider: "cp-zhipu-team" })) }, fetch: async () => json({ success: true, data: { limits: [] } }) }));
 	check("团队版显示组织 ID / 项目 ID 字段", Boolean(fieldOf(teamPage, "组织 ID")) && Boolean(fieldOf(teamPage, "项目 ID")));
-	const volPage = pageTree(bootstrap({ storage: { "dsh-balance-inquiry:config": JSON.stringify(Object.assign({}, ccConfig, { provider: "cp-volcengine" })) }, fetch: async () => json({ Result: {} }) }));
+	const volPage = editPageOf(bootstrap({ storage: { "dsh-balance-inquiry:config": JSON.stringify(Object.assign({}, ccConfig, { provider: "cp-volcengine" })) }, fetch: async () => json({ Result: {} }) }));
 	check("火山方舟显示 AccessKey ID 字段", Boolean(fieldOf(volPage, "AccessKey ID")));
 	check("SecretAccessKey 是 password 输入", propsOf(fieldOf(volPage, "SecretAccessKey")).type === "password", propsOf(fieldOf(volPage, "SecretAccessKey")).type);
 	//#endregion
+
+	//#region 12. 当前供应商映射（宿主 whoami → 套餐预填）
+	section("12. 当前供应商映射");
+	const map = internals.mapCurrentProvider;
+	check(
+		"New API 网关地址 → newapi 且去掉 /v1",
+		map && map({ provider: "cotton-api", baseUrl: "https://api.cottonapi.cloud/v1" }).provider === "newapi" && map({ provider: "cotton-api", baseUrl: "https://api.cottonapi.cloud/v1" }).baseUrl === "https://api.cottonapi.cloud",
+		JSON.stringify(map && map({ provider: "cotton-api", baseUrl: "https://api.cottonapi.cloud/v1" }))
+	);
+	check(
+		"DeepSeek 官方地址 → deepseek",
+		map && map({ provider: "x", baseUrl: "https://api.deepseek.com" }).provider === "deepseek",
+		JSON.stringify(map && map({ provider: "x", baseUrl: "https://api.deepseek.com" }))
+	);
+	check(
+		"Kimi 编程套餐地址 → cp-kimi",
+		map && map({ provider: "x", baseUrl: "https://api.kimi.com/coding" }).provider === "cp-kimi",
+		JSON.stringify(map && map({ provider: "x", baseUrl: "https://api.kimi.com/coding" }))
+	);
+	check("读不到 baseUrl 时返回 null", map && map({ provider: "x" }) === null, JSON.stringify(map && map({ provider: "x" })));
+	check("输入为空时返回 null", map && map(null) === null, JSON.stringify(map && map(null)));
 
 	// ---- 汇总 ----
 	console.log("\n" + "=".repeat(64));

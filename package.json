@@ -1,7 +1,7 @@
 {
   "name": "dsh-balance-inquiry",
-  "version": "0.3.3",
-  "description": "在左侧边栏底部显示 New API 剩余额度与各家编程套餐（Token Plan / Coding Plan）用量，可点击进入官网，官网地址可在设置中修改",
+  "version": "0.4.0",
+  "description": "多套餐余额看板：侧边栏显示剩余额度，左键打开看板看每个套餐的余额，支持原生余额接口、New API 与编程套餐（Token Plan / Coding Plan）",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",

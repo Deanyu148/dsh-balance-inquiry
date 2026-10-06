@@ -13,6 +13,13 @@
 ![设置页](docs/screenshot-2.png)
 
 
+- **多套餐**：一个套餐一条配置，侧边栏显示所有套餐里最紧急的那条；**左键点这一行打开余额看板**，
+  每个套餐一张圆角长方形卡片（套餐名称 / 剩余额度 / 上次查询时间）。
+- 看板里：**左键点卡片打开这个套餐的官网地址**，另有「添加套餐」「立即查询」按钮，
+  按 Esc 或点遮罩关闭；要看/改某个套餐就去 设置 → 余额查询 里点它的长条按钮。
+- 设置页分两级：一级是「添加套餐」+ 已添加套餐的长条按钮列表 + 通用设置；点「添加套餐」弹窗先选
+  **按量计费（API Key）**还是 **Token Plan / Coding Plan**，再选厂商；点长条按钮进入二级编辑页
+  （改名称 / 厂商 / 令牌 / 接口地址 / 官网地址，或删除套餐）。
 - 支持 New API（one-api / new-api 系）、DeepSeek 官方、StepFun、SiliconFlow（国内 / 国际）、
   OpenRouter、Novita AI 六类**原生余额接口**，以及**自定义用量脚本**
   （`({ request: {…}, extractor: function (response) {…} })`，支持
@@ -21,13 +28,17 @@
   智谱 GLM 团队版、MiniMax、ZenMux、火山方舟（Agent / Coding Plan）、OpenCode Go、Command Code；
   显示每个时间窗口（5 小时 / 周 / 月）的**已用百分比与剩余百分比**，剩余不足 10% 时变黄。
 - New API 默认 `GET {baseUrl}/api/user/self`，显示值 = `data.quota ÷ 换算比例`
-  （默认 500000，也就是 1 ￥ = 500000 quota）。
-- 点击这一行打开**官网地址**（在设置里可改；留空则用接口地址）。
-- 多套餐 / 多币种支持：侧边栏显示额度最少（最紧急）的那一项，鼠标悬停的 tooltip 里列出其余项。
+  （默认 500000，也就是 1 ￥ = 500000 quota）；**按积分 / credits 计的套餐不显示换算比例**。
+- **没有「自动识别」**：厂商由套餐显式指定，接口地址不再参与判断。
+- 多套餐 / 多币种支持：侧边栏显示额度最少（最紧急）的那一项，鼠标悬停的 tooltip 里列出所有套餐
+  （含每个套餐的各档位名称与重置时间）。
 - **keep-last-good**：瞬时失败（网络错误 / 超时 / 5xx / 429）时，10 分钟内继续展示上次成功的余额，
   tooltip 标注「上次成功：…」；鉴权失败等确定性失败立即透出并清掉旧值，避免显示过期额度。
 - 余额只在**为 0** 时变红；只有按百分比的档位才做「剩余 < 10%」的黄色预警。
 - 请求默认由 **DSH 宿主进程**发出，不受浏览器跨域限制；宿主通道不可用时自动回落浏览器直连。
+- 添加套餐时，若宿主能读到 DSH **当前正在使用的模型供应商**
+  （`GET /plugins/dsh-balance-inquiry/whoami`），弹窗里会置顶一个
+  「使用当前正在用的供应商」的一键添加项（只带厂商与接口地址，不含任何密钥）。
 
 ## 安装
 
@@ -41,34 +52,37 @@ dsh plugin --profile desktop add dsh-balance-inquiry
 
 ## 配置
 
-打开 **设置 → 余额查询**：
+打开 **设置 → 余额查询**（一级页）：
 
 > 插件**不预设任何站点**：接口地址与官网地址都是空的，也不会自动去查任何第三方服务。
-> 第一次使用请自己填接口地址和访问令牌；两个地址都为空时，侧边栏按钮只刷新、不跳转。
+> 第一次使用请点「添加套餐」自己填；两个地址都为空时，看板卡片不会跳转。
 
 | 字段 | 说明 |
 | --- | --- |
-| 查询方式 | `自动识别（按地址判断）`、`New API / One API`、`DeepSeek 官方`、`阶跃星辰 StepFun`、`SiliconFlow（国内/国际）`、`OpenRouter`、`Novita AI`、`自定义脚本`，以及 8 个 `Token Plan · <厂商>` 编程套餐 |
-| 接口地址 | 例如 `https://api.example.com`，末尾不要带 `/`；**默认为空**，不填就不查；选原生供应商时自动隐藏（用官方地址）；ZenMux 用它作为用量端点；火山方舟用它推断区域（形如 `https://ark.cn-beijing.volces.com/api/plan/v3`，可留空） |
-| 访问令牌 | New API 的「系统访问令牌」（**不是** `sk-` 开头的 API Key），作为 `Authorization: Bearer …` 发送；编程套餐填对应厂商的控制台令牌 |
+| 套餐名称 | 看板卡片与侧边栏 tooltip 上显示的名字，留空则用厂商名 |
+| 计费类型 | `按量计费（API Key）` 或 `Token Plan / Coding Plan`，决定可选的厂商与要填的字段 |
+| 厂商 | 按量计费：New API / One API、DeepSeek、StepFun、SiliconFlow（国内 / 国际）、OpenRouter、Novita AI、自定义脚本；编程套餐：Kimi For Coding、智谱 GLM、智谱 GLM 团队版、MiniMax、ZenMux、火山方舟、OpenCode Go、Command Code |
+| 接口地址 | 例如 `https://api.example.com`，末尾不要带 `/`；原生厂商用官方地址、不显示该字段 |
+| 用量接口地址 | 编程套餐用；ZenMux 必填，火山方舟用来推断区域（形如 `https://ark.cn-beijing.volces.com/api/plan/v3`） |
+| 访问令牌 / 控制台令牌 | New API 用控制台「系统访问令牌」（**不是** `sk-` 开头的 API Key），作为 `Authorization: Bearer …` 发送；官方厂商 / 编程套餐填对应平台的令牌 |
 | 用户 ID | 作为 `New-Api-User` 请求头发送，部分站点必填 |
 | 组织 ID / 项目 ID | 选「智谱 GLM 团队版」时出现，分别作为 `bigmodel-organization` / `bigmodel-project` 请求头发送 |
 | AccessKey ID / SecretAccessKey | 选「火山方舟」时出现，用于 OpenAPI 签名（不是推理用的 API Key） |
-| 官网地址 | 点击侧边栏按钮打开的网址；**默认为空**，留空则改用接口地址；两者都空时按钮只刷新不跳转 |
-| 自动刷新间隔 | **分钟**，0 = 不自动查询；默认 5 分钟 |
-| 请求超时 | 秒，2–30，默认 10 |
-| 额度换算比例 | 1 ￥ 等于多少 quota，New API 默认 500000 |
-| 货币单位 | New API 场景显示用的单位，默认 `CNY`（界面上显示为 ￥） |
+| 官网地址 | 看板卡片左键打开的网址；留空则改用接口地址 |
+| 额度换算比例 / 货币单位 | **只有 New API 与自定义脚本显示**；按积分 / credits 计的套餐不显示 |
 | 自定义脚本 | 选「自定义脚本」时出现，旁边有「填入 New API 模板 / 通用模板」按钮 |
+| 自动刷新间隔 | **分钟**，0 = 不自动查询；默认 5 分钟（通用设置） |
+| 请求超时 | 秒，2–30，默认 10（通用设置） |
 
-配置存在渲染进程的 `localStorage`（键 `dsh-balance-inquiry:config`），最近一次查询结果缓存在
-`dsh-balance-inquiry:last-reading`，所以重启后按钮会立刻显示上次的余额，不用等第一次请求。
+配置存在渲染进程的 `localStorage`：套餐列表在 `dsh-balance-inquiry:accounts`，
+通用设置在 `dsh-balance-inquiry:settings`，每个套餐最近一次读数在 `dsh-balance-inquiry:results`，
+所以重启后看板会立刻显示上次的余额，不用等第一次请求。
 
 ## 各供应商的端点
 
-| 查询方式 | 端点 | 取值 |
+| 计费类型 / 厂商 | 端点 | 取值 |
 | --- | --- | --- |
-| New API | `GET {baseUrl}/api/user/self` | `data.quota ÷ 换算比例` |
+| 按量计费 · New API | `GET {baseUrl}/api/user/self` | `data.quota ÷ 换算比例` |
 | DeepSeek | `GET https://api.deepseek.com/user/balance` | `balance_infos[].total_balance`（每个币种一条） |
 | StepFun | `GET https://api.stepfun.com/v1/accounts` | `balance`（CNY） |
 | SiliconFlow | `GET https://api.siliconflow.{cn,com}/v1/user/info` | `data.totalBalance` |
@@ -81,9 +95,9 @@ dsh plugin --profile desktop add dsh-balance-inquiry
 
 ## 编程套餐（Token Plan / Coding Plan）
 
-「查询方式」里选 `Token Plan · <厂商>`（也可以选「自动识别」，插件会按接口地址命中对应的厂商）。
-编程套餐没有"余额"这个概念，所以显示的是每个时间窗口的**用量百分比**：侧边栏取最紧急的一项
-（已用最多 / 剩余最少），悬停时列出全部窗口。
+在「添加套餐」弹窗里选 `Token Plan / Coding Plan`，再选厂商（不再有自动识别）。
+编程套餐没有"余额"这个概念，所以显示的是每个时间窗口的**用量百分比**：看板卡片取最紧急的一项
+（已用最多 / 剩余最少），tooltip 与编辑页列出全部窗口。
 
 | 厂商 | 端点 | 需要填写 |
 | --- | --- | --- |
@@ -109,7 +123,7 @@ dsh plugin --profile desktop add dsh-balance-inquiry
 
 ## 自定义用量脚本
 
-「查询方式」选「自定义脚本」后，可以粘贴一段求值后返回对象的脚本，用来适配任何站点：
+「厂商」选「自定义脚本」后，可以粘贴一段求值后返回对象的脚本，用来适配任何站点：
 
 ```js
 ({
@@ -146,7 +160,7 @@ dsh plugin --profile desktop add dsh-balance-inquiry
 | `网络错误 Network error: 无法连接 <host>` | 域名解析不了 / 网络不通；或请求走了浏览器直连通道，而目标站没返回 `Access-Control-Allow-Origin` | 完全退出并重开 DSH 让宿主通道生效；确认地址本身可用 |
 | `请求超时 Request failed: timeout after Ns` | 目标站响应慢或不可达 | 把「请求超时」调大（2–30 秒） |
 | `Authentication failed (HTTP 401)` / `无权进行此操作，access token 无效` | 令牌不对：New API 要的是控制台「系统访问令牌」，不是 chat 用的 API Key；有的站点还要「用户 ID」 | 重新复制令牌、补上用户 ID，点「立即查询」 |
-| `Failed to parse response: 缺少字段 …` | 地址指向的不是该供应商的余额接口，或站点字段不同 | 把「查询方式」改成「自定义脚本」，自己写取值规则 |
+| `Failed to parse response: 缺少字段 …` | 地址指向的不是该供应商的余额接口，或站点字段不同 | 把「厂商」改成「自定义脚本」，自己写取值规则 |
 | 一直显示「上次成功」的旧余额 | 最近一次是瞬时失败，10 分钟内继续展示上次成功的值 | 看设置页状态行的原因，或点「立即查询」重试 |
 | 设置页底部写「查询通道：浏览器直连」 | 宿主路由没生效（多半是没重启 DSH，或 webserver 被禁用） | 完全退出并重新打开 DSH |
 

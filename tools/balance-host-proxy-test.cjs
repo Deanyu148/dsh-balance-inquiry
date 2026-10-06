@@ -20,6 +20,7 @@ const { pathToFileURL } = require("node:url");
 
 const HOST_HALF = path.resolve(__dirname, "..", "lib", "index.js");
 const PROXY_PATH = "/plugins/dsh-balance-inquiry/proxy";
+const WHOAMI_PATH = "/plugins/dsh-balance-inquiry/whoami";
 
 const verbose = process.argv.indexOf("-v") !== -1 || process.argv.indexOf("--verbose") !== -1;
 
@@ -146,6 +147,24 @@ async function main() {
 	const module = await import(pathToFileURL(HOST_HALF).href);
 	const routes = [];
 	const effects = [];
+	/** 假的宿主服务表：whoami 路由通过 ctx.get() 读它。 */
+	const services = {
+		agentDefaultModel: {
+			currentSelection() {
+				return { provider: "cotton-api", model: "deepseek-v4.1-flash" };
+			}
+		},
+		settings: {
+			describe() {
+				return [
+					{
+						ns: "llm-pi-ai",
+						value: { providers: { "cotton-api": { displayName: "Cotton API", baseURL: "https://api.cottonapi.cloud/v1", api: "openai-completions" } } }
+					}
+				];
+			}
+		}
+	};
 	const ctx = {
 		webServer: {
 			register(route) {
@@ -157,6 +176,10 @@ async function main() {
 			effects.push(label);
 			const disposer = fn();
 			return typeof disposer === "function" ? disposer : () => {};
+		},
+		/** 只读服务访问器：whoami 路由用它读当前模型供应商。 */
+		get(name) {
+			return services[name];
 		}
 	};
 
@@ -165,9 +188,11 @@ async function main() {
 	check("inject = ['webServer']", Array.isArray(module.inject) && module.inject.join(",") === "webServer", JSON.stringify(module.inject));
 	check("apply 是函数", typeof module.apply === "function");
 	module.apply(ctx);
-	check("注册了一条 exact 路由", routes.length === 1 && routes[0].kind === "exact" && routes[0].path === PROXY_PATH, JSON.stringify(routes.map((route) => route.kind + " " + route.path)));
-	check("注册了清理 effect", effects.length === 1, JSON.stringify(effects));
-	const handler = routes[0].handler;
+	const proxyRoute = routes.find((route) => route.path === PROXY_PATH);
+	const whoamiRoute = routes.find((route) => route.path === WHOAMI_PATH);
+	check("注册了代理与 whoami 两条 exact 路由", routes.length === 2 && Boolean(proxyRoute) && Boolean(whoamiRoute) && proxyRoute.kind === "exact" && whoamiRoute.kind === "exact", JSON.stringify(routes.map((route) => route.kind + " " + route.path)));
+	check("注册了两条清理 effect", effects.length === 2, JSON.stringify(effects));
+	const handler = proxyRoute.handler;
 	check("handler 是函数", typeof handler === "function");
 
 	section("2. 能力探测 / 方法限制");
@@ -234,6 +259,28 @@ async function main() {
 
 	server.close();
 	server.unref();
+
+	section("7. whoami：读出当前模型供应商（供客户端预填套餐）");
+	const whoami = await call(whoamiRoute.handler, "GET", { cookie: "dsh=1" }, "");
+	const whoamiBody = jsonOf(whoami);
+	check("whoami 返回 ok", whoamiBody && whoamiBody.ok === true, whoami.body);
+	check(
+		"带出 provider / model / baseUrl",
+		whoamiBody && whoamiBody.current && whoamiBody.current.provider === "cotton-api" && whoamiBody.current.model === "deepseek-v4.1-flash" && whoamiBody.current.baseUrl === "https://api.cottonapi.cloud/v1",
+		JSON.stringify(whoamiBody && whoamiBody.current)
+	);
+	check("不泄露密钥字段", whoamiBody && JSON.stringify(whoamiBody).indexOf("apiKey") === -1 && JSON.stringify(whoamiBody).indexOf("sk-") === -1, whoami.body);
+	const whoamiNoCookie = await call(whoamiRoute.handler, "GET", {}, "");
+	const whoamiNoCookieBody = jsonOf(whoamiNoCookie);
+	check("没有会话 cookie 一律拒绝", whoamiNoCookieBody && whoamiNoCookieBody.ok === false, whoamiNoCookie.body);
+
+	// 读不到服务时给出 ok:false，而不是抛错
+	const savedModel = services.agentDefaultModel;
+	services.agentDefaultModel = undefined;
+	const whoamiEmpty = await call(whoamiRoute.handler, "GET", { cookie: "dsh=1" }, "");
+	const whoamiEmptyBody = jsonOf(whoamiEmpty);
+	check("读不到供应商时 ok:false + 说明", whoamiEmptyBody && whoamiEmptyBody.ok === false && Boolean(whoamiEmptyBody.error), whoamiEmpty.body);
+	services.agentDefaultModel = savedModel;
 
 	console.log("\n" + "=".repeat(64));
 	console.log((failures === 0 ? "全部通过" : "存在失败") + "：" + (total - failures) + "/" + total + " 项断言通过");
