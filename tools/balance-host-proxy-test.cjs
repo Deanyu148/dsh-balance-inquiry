@@ -312,16 +312,15 @@ async function main() {
 	const providersNoCookieBody = jsonOf(providersNoCookie);
 	check("没有会话 cookie 一律拒绝 providers", providersNoCookieBody && providersNoCookieBody.ok === false, providersNoCookie.body);
 
-	// 内置官方路由的 settingsPath 是空数组，配置在各自条目里而不是 providers 映射中，
-	// 只扫设置文档就会漏掉 —— 必须从 llm.listConfigurableProviders() 里取。
+	// 官方路由合并为 deepseek-official（DeepSeek 官方）
 	check(
-		"列出官方登录 deepseek-official（不在设置文档里）",
-		providersBody.providers.some((p) => p.id === "deepseek-official" && p.displayName === "DeepSeek"),
+		"列出合并后的 DeepSeek 官方 deepseek-official",
+		providersBody.providers.some((p) => p.id === "deepseek-official" && p.displayName === "DeepSeek 官方"),
 		JSON.stringify(providersBody.providers)
 	);
 	check(
-		"列出账号登录 deepseek-account（不在设置文档里）",
-		providersBody.providers.some((p) => p.id === "deepseek-account" && p.displayName === "DeepSeek Account"),
+		"不再单独列出 deepseek-account（已合并进 deepseek-official）",
+		!providersBody.providers.some((p) => p.id === "deepseek-account"),
 		JSON.stringify(providersBody.providers)
 	);
 	// 自定义路由同时在目录与设置文档里，去重后只出现一次。

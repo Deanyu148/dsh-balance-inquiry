@@ -1690,6 +1690,14 @@ async function main() {
 		map && map({ provider: "custom-api" }).provider === "custom-api" && map({ provider: "custom-api" }).dshProviderId === "custom-api" && map({ provider: "custom-api" }).baseUrl === undefined,
 		JSON.stringify(map && map({ provider: "custom-api" }))
 	);
+	check(
+		"deepseek-official 与 deepseek-account 均合并映射为 deepseek 官方",
+		map && map({ provider: "deepseek-official" }).provider === "deepseek" &&
+			map({ provider: "deepseek-official" }).dshProviderId === "deepseek-official" &&
+			map({ provider: "deepseek-account" }).provider === "deepseek" &&
+			map({ provider: "deepseek-account" }).dshProviderId === "deepseek-official",
+		JSON.stringify(map && map({ provider: "deepseek-official" }))
+	);
 	check("空对象或无 provider 时返回 null", map && map({}) === null && map(null) === null);
 
 	// 测试：当 DSH 当前 provider 切换时，左下角自动展示匹配该 dshProviderId 的套餐
@@ -1718,8 +1726,7 @@ async function main() {
 	// ---- 「供应商ID」字段：下拉来自宿主 providers 路由，且文案必须已翻译 ----
 	// 内联字典漏键时界面会把原始键名（form.dshProvider…）直接显示出来，这里盯住这个回归。
 	const HOST_PROVIDERS = [
-		{ id: "deepseek-official", displayName: "DeepSeek" },
-		{ id: "deepseek-account", displayName: "DeepSeek Account" },
+		{ id: "deepseek-official", displayName: "DeepSeek 官方" },
 		{ id: "custom-api", displayName: "Custom API" }
 	];
 	const providerListCalls = [];
@@ -1747,18 +1754,18 @@ async function main() {
 	check("界面里没有未翻译的 form.dshProvider 原始键", textOf(providerPage).indexOf("form.dshProvider") === -1, textOf(providerPage).slice(0, 200));
 	check("提示文案已翻译（不是原始键）", has(textOf(providerPage), "deepseek-official"), textOf(providerPage).slice(0, 200));
 	const providerOptions = providerField ? allTags(providerField, "option") : [];
-	check("下拉含「不设置」+ 宿主返回的 3 个 provider", providerOptions.length === 4, providerOptions.length);
+	check("下拉含「不设置」+ 宿主返回的合并后的 provider", providerOptions.length === 3, providerOptions.length);
 	check(
 		"第一项是「不设置」（不是任何原始键名）",
 		providerOptions.length > 0 && textOf(providerOptions[0]) === "不设置" && propsOf(providerOptions[0]).value === "",
 		JSON.stringify(providerOptions.slice(0, 1).map((o) => [propsOf(o).value, textOf(o)]))
 	);
 	check(
-		"下拉列出官方登录 deepseek-official / deepseek-account",
-		providerOptions.some((o) => propsOf(o).value === "deepseek-official") && providerOptions.some((o) => propsOf(o).value === "deepseek-account"),
+		"下拉列出合并后的官方登录 deepseek-official",
+		providerOptions.some((o) => propsOf(o).value === "deepseek-official"),
 		JSON.stringify(providerOptions.map((o) => propsOf(o).value))
 	);
-	check("provider 选项显示 displayName (id)", providerOptions.some((o) => textOf(o) === "DeepSeek (deepseek-official)"), JSON.stringify(providerOptions.map((o) => textOf(o))));
+	check("provider 选项显示 displayName (id)", providerOptions.some((o) => textOf(o) === "DeepSeek (deepseek-official)" || textOf(o) === "DeepSeek 官方 (deepseek-official)"), JSON.stringify(providerOptions.map((o) => textOf(o))));
 	check("读到了宿主 providers 路由", providerListCalls.length >= 1, providerListCalls.length);
 	// 路由不可用时下拉退化成只有「不设置」，不能崩。
 	const providerDownEnv = bootstrap({ storage: { "dsh-balance-inquiry:config": JSON.stringify(CONFIG) }, fetch: async () => json({ ok: false }, 500) });

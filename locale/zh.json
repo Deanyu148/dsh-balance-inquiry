@@ -150,7 +150,7 @@
   "form.website.hint": "点击看板里的套餐卡片时打开的网址；留空则使用接口地址",
   "form.dshProvider": "供应商ID",
   "form.dshProvider.none": "不设置",
-  "form.dshProvider.hint": "绑定到 DSH 的 provider id：官方 API Key 是 deepseek-official，官方账号登录是 deepseek-account，自定义供应商用 cordis.patch.yml 里 llm-pi-ai 的路由 id。在 DSH 中切换到该供应商时，左下角自动显示此套餐；不设置则始终按最紧急额度展示",
+  "form.dshProvider.hint": "绑定到 DSH 的 provider id：DeepSeek 官方是 deepseek-official，自定义供应商用 cordis.patch.yml 里 llm-pi-ai 的路由 id。在 DSH 中切换到该供应商时，左下角自动显示此套餐；不设置则始终按最紧急额度展示",
   "form.save": "保存",
   "form.back": "返回",
   "edit.back": "返回列表",
