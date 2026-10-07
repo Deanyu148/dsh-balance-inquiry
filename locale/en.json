@@ -155,5 +155,11 @@
   "form.back": "Back",
   "edit.back": "Back to list",
   "edit.queryNow": "Refresh now",
-  "edit.remove": "Remove plan"
+  "edit.remove": "Remove plan",
+  "board.card.settings": "Settings",
+  "board.card.remove": "Delete",
+  "confirm.delete.title": "Confirm Delete Plan",
+  "confirm.delete.desc": "Are you sure you want to delete plan \"{name}\"? This action cannot be undone.",
+  "confirm.delete.ok": "Delete",
+  "confirm.delete.cancel": "Cancel"
 }

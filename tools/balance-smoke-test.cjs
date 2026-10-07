@@ -738,6 +738,33 @@ async function main() {
 		JSON.stringify(newApiEnv.opened)
 	);
 	check("卡片不再注册右键处理", propsOf(newApiCard).onContextMenu === undefined);
+
+	// 看板卡片操作按钮：设置（上）与删除（下）
+	const cardWraps = allByClass(openBoard(newApiEnv), "dsh-balance-inquiry-card-wrap");
+	check("卡片用 card-wrap 包裹", cardWraps.length >= 1);
+	const actionBtns = allByClass(cardWraps[0], "dsh-balance-inquiry-btn-mini");
+	check("卡片最右侧有两个操作按钮（设置与删除）", actionBtns.length === 2 && textOf(actionBtns[0]) === "设置" && textOf(actionBtns[1]) === "删除");
+
+	// 看板卡片点击「设置」打开套餐编辑模态框
+	click(actionBtns[0]);
+	let boardAfterSettings = openBoard(newApiEnv);
+	check("点击设置弹出编辑模态框", has(textOf(boardAfterSettings), "接口地址") && has(textOf(boardAfterSettings), "访问令牌"));
+	// 点击表单的取消/返回关闭编辑模态框
+	const editCancelBtn = buttonByText(boardAfterSettings, "返回");
+	if (editCancelBtn) click(editCancelBtn);
+
+	// 看板卡片点击「删除」二次弹窗确认
+	const cardWrapsBeforeDelete = allByClass(openBoard(newApiEnv), "dsh-balance-inquiry-card-wrap");
+	const deleteBtn = allByClass(cardWrapsBeforeDelete[0], "dsh-balance-inquiry-btn-mini")[1];
+	click(deleteBtn);
+	let boardAfterDelete = openBoard(newApiEnv);
+	check("点击删除弹出二次确认弹窗", has(textOf(boardAfterDelete), "确认删除套餐") && has(textOf(boardAfterDelete), "确定要删除套餐"));
+	// 取消删除
+	const cancelDelBtn = buttonByText(boardAfterDelete, "取消");
+	check("二次确认弹窗有取消按钮", Boolean(cancelDelBtn));
+	click(cancelDelBtn);
+	check("取消删除后套餐依然保留", allByClass(openBoard(newApiEnv), "dsh-balance-inquiry-card").length === 1);
+
 	// 看板里的「添加套餐」会弹出计费类型选择
 	const boardAddButton = buttonByText(openBoard(newApiEnv), "添加套餐");
 	click(boardAddButton);
@@ -763,6 +790,16 @@ async function main() {
 	click(accountRow);
 	const editPage = pageTree(newApiEnv);
 	check("二级编辑页有返回 / 删除按钮", Boolean(buttonByText(editPage, "返回列表")) && Boolean(buttonByText(editPage, "删除套餐")));
+	// DSH 设置页面二级编辑页的「删除套餐」也必须有二次弹窗确认
+	const settingsRemoveBtn = buttonByText(editPage, "删除套餐");
+	click(settingsRemoveBtn);
+	const editPageAfterDelete = pageTree(newApiEnv);
+	check("DSH 设置页面点击删除套餐也弹出二次确认弹窗", has(textOf(editPageAfterDelete), "确认删除套餐") && has(textOf(editPageAfterDelete), "确定要删除套餐"));
+	const cancelSettingsDelete = buttonByText(editPageAfterDelete, "取消");
+	check("设置页二次确认弹窗有取消按钮", Boolean(cancelSettingsDelete));
+	click(cancelSettingsDelete);
+	check("取消删除后依然在编辑页且套餐保留", Boolean(fieldOf(pageTree(newApiEnv), "接口地址")));
+
 	check("编辑页显示接口地址字段", Boolean(fieldOf(editPage, "接口地址")));
 	check("New API 编辑页显示换算比例与货币单位", Boolean(fieldOf(editPage, "额度换算比例")) && Boolean(fieldOf(editPage, "货币单位")));
 	check("令牌输入框是 password", propsOf(fieldOf(editPage, "访问令牌")).type === "password");

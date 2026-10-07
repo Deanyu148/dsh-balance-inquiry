@@ -155,5 +155,11 @@
   "form.back": "返回",
   "edit.back": "返回列表",
   "edit.queryNow": "立即查询",
-  "edit.remove": "删除套餐"
+  "edit.remove": "删除套餐",
+  "board.card.settings": "设置",
+  "board.card.remove": "删除",
+  "confirm.delete.title": "确认删除套餐",
+  "confirm.delete.desc": "确定要删除套餐「{name}」吗？此操作无法撤销。",
+  "confirm.delete.ok": "确认删除",
+  "confirm.delete.cancel": "取消"
 }
