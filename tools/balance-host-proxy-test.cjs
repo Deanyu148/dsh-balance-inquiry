@@ -152,7 +152,7 @@ async function main() {
 	const services = {
 		agentDefaultModel: {
 			currentSelection() {
-				return { provider: "cotton-api", model: "deepseek-v4.1-flash" };
+				return { provider: "custom-api", model: "deepseek-v4.1-flash" };
 			}
 		},
 		/** 适配器目录：内置官方路由（settingsPath 为空）只在这里可见。 */
@@ -161,7 +161,7 @@ async function main() {
 				return [
 					{ provider: "deepseek-official", displayName: "DeepSeek", settingsNs: "llm-deepseek", settingsPath: [] },
 					{ provider: "deepseek-account", displayName: "DeepSeek Account", settingsNs: "llm-deepseek-account", settingsPath: [] },
-					{ provider: "cotton-api", displayName: "Cotton API", settingsNs: "llm-pi-ai", settingsPath: ["providers", "cotton-api"] }
+					{ provider: "custom-api", displayName: "Custom API", settingsNs: "llm-pi-ai", settingsPath: ["providers", "custom-api"] }
 				];
 			}
 		},
@@ -170,7 +170,7 @@ async function main() {
 				return [
 					{
 						ns: "llm-pi-ai",
-						value: { providers: { "cotton-api": { displayName: "Cotton API", baseURL: "https://api.cottonapi.cloud/v1", api: "openai-completions" } } }
+						value: { providers: { "custom-api": { displayName: "Custom API", baseURL: "https://api.example.test/v1", api: "openai-completions" } } }
 					}
 				];
 			}
@@ -278,7 +278,7 @@ async function main() {
 	check("whoami 返回 ok", whoamiBody && whoamiBody.ok === true, whoami.body);
 	check(
 		"只带出 provider 与 model，不泄露 baseUrl 或其它网络地址",
-		whoamiBody && whoamiBody.current && whoamiBody.current.provider === "cotton-api" && whoamiBody.current.model === "deepseek-v4.1-flash" && whoamiBody.current.baseUrl === undefined,
+		whoamiBody && whoamiBody.current && whoamiBody.current.provider === "custom-api" && whoamiBody.current.model === "deepseek-v4.1-flash" && whoamiBody.current.baseUrl === undefined,
 		JSON.stringify(whoamiBody && whoamiBody.current)
 	);
 	check("不泄露密钥字段", whoamiBody && JSON.stringify(whoamiBody).indexOf("apiKey") === -1 && JSON.stringify(whoamiBody).indexOf("sk-") === -1, whoami.body);
@@ -300,7 +300,7 @@ async function main() {
 	check("providers 返回 ok", providersBody && providersBody.ok === true, providersRes.body);
 	check(
 		"列出已有的 provider id 与 displayName",
-		Array.isArray(providersBody && providersBody.providers) && providersBody.providers.some((p) => p.id === "cotton-api" && p.displayName === "Cotton API"),
+		Array.isArray(providersBody && providersBody.providers) && providersBody.providers.some((p) => p.id === "custom-api" && p.displayName === "Custom API"),
 		JSON.stringify(providersBody && providersBody.providers)
 	);
 	check(
@@ -327,14 +327,14 @@ async function main() {
 	// 自定义路由同时在目录与设置文档里，去重后只出现一次。
 	check(
 		"目录与设置文档重复的 id 只出现一次",
-		providersBody.providers.filter((p) => p.id === "cotton-api").length === 1,
+		providersBody.providers.filter((p) => p.id === "custom-api").length === 1,
 		JSON.stringify(providersBody.providers)
 	);
 	// 目录不可用时（旧运行时）退化成只扫设置文档，不能崩。
 	const savedLlm = services.llm;
 	services.llm = undefined;
 	const noCatalogBody = jsonOf(await call(providersRoute.handler, "GET", { cookie: "dsh=1" }, ""));
-	check("没有 llm 服务时退回只扫设置文档", noCatalogBody.providers.length === 1 && noCatalogBody.providers[0].id === "cotton-api", JSON.stringify(noCatalogBody.providers));
+	check("没有 llm 服务时退回只扫设置文档", noCatalogBody.providers.length === 1 && noCatalogBody.providers[0].id === "custom-api", JSON.stringify(noCatalogBody.providers));
 	// 目录抛错时同样不能影响设置文档那一轮。
 	services.llm = {
 		listConfigurableProviders() {
@@ -342,7 +342,7 @@ async function main() {
 		}
 	};
 	const brittleBody = jsonOf(await call(providersRoute.handler, "GET", { cookie: "dsh=1" }, ""));
-	check("llm 目录抛错时仍返回设置文档里的 provider", brittleBody.providers.length === 1 && brittleBody.providers[0].id === "cotton-api", JSON.stringify(brittleBody.providers));
+	check("llm 目录抛错时仍返回设置文档里的 provider", brittleBody.providers.length === 1 && brittleBody.providers[0].id === "custom-api", JSON.stringify(brittleBody.providers));
 	services.llm = savedLlm;
 
 	console.log("\n" + "=".repeat(64));
@@ -359,3 +359,4 @@ main()
 		if (error && error.stack) console.log(error.stack);
 		process.exit(2);
 	});
+

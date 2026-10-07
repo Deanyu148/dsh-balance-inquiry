@@ -1650,15 +1650,15 @@ async function main() {
 	const map = internals.mapCurrentProvider;
 	check(
 		"宿主 provider 映射出 provider 与 dshProviderId，不包含任何网络地址",
-		map && map({ provider: "cotton-api" }).provider === "cotton-api" && map({ provider: "cotton-api" }).dshProviderId === "cotton-api" && map({ provider: "cotton-api" }).baseUrl === undefined,
-		JSON.stringify(map && map({ provider: "cotton-api" }))
+		map && map({ provider: "custom-api" }).provider === "custom-api" && map({ provider: "custom-api" }).dshProviderId === "custom-api" && map({ provider: "custom-api" }).baseUrl === undefined,
+		JSON.stringify(map && map({ provider: "custom-api" }))
 	);
 	check("空对象或无 provider 时返回 null", map && map({}) === null && map(null) === null);
 
 	// 测试：当 DSH 当前 provider 切换时，左下角自动展示匹配该 dshProviderId 的套餐
 	const multiAccounts = [
 		Object.assign({}, CONFIG, { id: "acc-1", name: "备用套餐", dshProviderId: "backup-api" }),
-		Object.assign({}, CONFIG, { id: "acc-2", name: "棉花云", dshProviderId: "cotton-api" })
+		Object.assign({}, CONFIG, { id: "acc-2", name: "棉花云", dshProviderId: "custom-api" })
 	];
 	const multiStore = bootstrap({
 		storage: {
@@ -1675,15 +1675,15 @@ async function main() {
 	check("默认按最紧急余额展示（50 ￥）", textOf(firstByClass(initialEntry, "dsh-balance-inquiry-entry-label")) === "剩余额度：50.00 ￥", textOf(firstByClass(initialEntry, "dsh-balance-inquiry-entry-label")));
 
 	// 验证 normalizeAccount 会保留 dshProviderId
-	const norm = internals.normalizeAccount({ id: "t1", dshProviderId: "cotton-api" });
-	check("normalizeAccount 规范化包含 dshProviderId", norm.dshProviderId === "cotton-api", JSON.stringify(norm));
+	const norm = internals.normalizeAccount({ id: "t1", dshProviderId: "custom-api" });
+	check("normalizeAccount 规范化包含 dshProviderId", norm.dshProviderId === "custom-api", JSON.stringify(norm));
 
 	// ---- 「供应商ID」字段：下拉来自宿主 providers 路由，且文案必须已翻译 ----
 	// 内联字典漏键时界面会把原始键名（form.dshProvider…）直接显示出来，这里盯住这个回归。
 	const HOST_PROVIDERS = [
 		{ id: "deepseek-official", displayName: "DeepSeek" },
 		{ id: "deepseek-account", displayName: "DeepSeek Account" },
-		{ id: "cotton-api", displayName: "Cotton API" }
+		{ id: "custom-api", displayName: "Custom API" }
 	];
 	const providerListCalls = [];
 	/** 服务 providers 路由与其它请求的 fetch。 */
@@ -1693,7 +1693,7 @@ async function main() {
 			providerListCalls.push(text);
 			return json({ ok: true, providers: HOST_PROVIDERS });
 		}
-		if (text.includes("/plugins/dsh-balance-inquiry/whoami")) return json({ ok: true, current: { provider: "cotton-api", model: "deepseek-v4.1-flash" } });
+		if (text.includes("/plugins/dsh-balance-inquiry/whoami")) return json({ ok: true, current: { provider: "custom-api", model: "deepseek-v4.1-flash" } });
 		return json(newApiBody());
 	};
 	const providerEnv = bootstrap({
@@ -1758,3 +1758,4 @@ main()
 		if (error && error.stack) console.log(error.stack);
 		process.exit(2);
 	});
+
