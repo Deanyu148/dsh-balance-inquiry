@@ -13,10 +13,14 @@ English ｜ [简体中文](./CHANGELOG.md)
     (`llm.listConfigurableProviders()`) and the settings document's `providers` map — and
     de-duplicates them. When the directory throws or the runtime is older, it falls back to
     the settings document alone without losing the custom providers it already listed.
-  - The field label is now "Provider ID", and the three missing `form.dshProvider*` strings
-    were added to both dictionaries (the UI used to print the raw keys).
+  - The field label is now "Provider ID", the first option is now **"Not set"**, and the three
+    missing `form.dshProvider*` strings were added to both dictionaries (the UI used to print
+    the raw keys).
   - Tests: added assertions for official-route visibility, two-source de-duplication,
-    graceful degradation, dropdown rendering, and the label regression.
+    graceful degradation, dropdown rendering, and the label regression — plus a **systematic
+    missing-translation guard**: every literal `t("…")` key in the bundle must have a
+    translation in both dictionaries, and the two key sets must match (verified with a
+    negative test that the guard actually fails).
 
 ## 0.4.4
 

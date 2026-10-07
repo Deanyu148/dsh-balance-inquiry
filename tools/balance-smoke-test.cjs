@@ -650,6 +650,28 @@ async function main() {
 		settingsRegistration && typeof settingsRegistration.options.label === "function" && settingsRegistration.options.label() === "余额查询",
 		settingsRegistration && settingsRegistration.options.label && settingsRegistration.options.label()
 	);
+
+	// 系统性地盯住「漏翻译」这一类 bug：bundle 里每个 t("…") 用到的字面量键，
+	// 中英两套字典都必须有译文。漏一条界面就会直接显示原始键名（曾经发生过：
+	// form.dshProvider* 三条只写在 locale/*.json 里，而 bundle 用的是内联字典）。
+	{
+		const dict = (baseEnv.moduleExports && baseEnv.moduleExports.__internals && baseEnv.moduleExports.__internals.dictionaries) || {};
+		const usedKeys = [...new Set([...source.matchAll(/\bt\(\s*"([A-Za-z0-9_.]+)"/g)].map((m) => m[1]))].sort();
+		check("bundle 里有可核对 t(\"…\") 键", usedKeys.length > 50, usedKeys.length);
+		for (const lang of ["zh", "en"]) {
+			const table = dict[lang] || {};
+			const missing = usedKeys.filter((key) => typeof table[key] !== "string");
+			check(
+				lang + " 字典覆盖全部 t(\"…\") 键（无漏翻译）",
+				missing.length === 0 && Object.keys(table).length > 0,
+				missing.length ? "缺 " + missing.join(", ") : Object.keys(table).length + " 条"
+			);
+		}
+		// 两套字典的键集合必须一致，避免只有中文/只有英文的半成品。
+		const zhKeys = Object.keys(dict.zh || {}).sort();
+		const enKeys = Object.keys(dict.en || {}).sort();
+		check("中英字典键集合一致", zhKeys.length > 0 && zhKeys.join("\n") === enKeys.join("\n"), "zh " + zhKeys.length + " / en " + enKeys.length);
+	}
 	//#endregion
 
 	//#region 2. 样式
@@ -1688,7 +1710,12 @@ async function main() {
 	check("界面里没有未翻译的 form.dshProvider 原始键", textOf(providerPage).indexOf("form.dshProvider") === -1, textOf(providerPage).slice(0, 200));
 	check("提示文案已翻译（不是原始键）", has(textOf(providerPage), "deepseek-official"), textOf(providerPage).slice(0, 200));
 	const providerOptions = providerField ? allTags(providerField, "option") : [];
-	check("下拉含「不关联」+ 宿主返回的 3 个 provider", providerOptions.length === 4, providerOptions.length);
+	check("下拉含「不设置」+ 宿主返回的 3 个 provider", providerOptions.length === 4, providerOptions.length);
+	check(
+		"第一项是「不设置」（不是任何原始键名）",
+		providerOptions.length > 0 && textOf(providerOptions[0]) === "不设置" && propsOf(providerOptions[0]).value === "",
+		JSON.stringify(providerOptions.slice(0, 1).map((o) => [propsOf(o).value, textOf(o)]))
+	);
 	check(
 		"下拉列出官方登录 deepseek-official / deepseek-account",
 		providerOptions.some((o) => propsOf(o).value === "deepseek-official") && providerOptions.some((o) => propsOf(o).value === "deepseek-account"),
@@ -1696,13 +1723,13 @@ async function main() {
 	);
 	check("provider 选项显示 displayName (id)", providerOptions.some((o) => textOf(o) === "DeepSeek (deepseek-official)"), JSON.stringify(providerOptions.map((o) => textOf(o))));
 	check("读到了宿主 providers 路由", providerListCalls.length >= 1, providerListCalls.length);
-	// 路由不可用时下拉退化成只有「不关联」，不能崩。
+	// 路由不可用时下拉退化成只有「不设置」，不能崩。
 	const providerDownEnv = bootstrap({ storage: { "dsh-balance-inquiry:config": JSON.stringify(CONFIG) }, fetch: async () => json({ ok: false }, 500) });
 	await tick(30);
 	editPageOf(providerDownEnv);
 	await tick(30);
 	const downField = fieldOf(pageTree(providerDownEnv), "供应商ID");
-	check("providers 路由不可用时只剩「不关联」", downField && allTags(downField, "option").length === 1, downField ? allTags(downField, "option").length : "(没有字段)");
+	check("providers 路由不可用时只剩「不设置」", downField && allTags(downField, "option").length === 1 && textOf(allTags(downField, "option")[0]) === "不设置", downField ? JSON.stringify(allTags(downField, "option").map((o) => textOf(o))) : "(没有字段)");
 
 	// ---- 汇总 ----
 	console.log("\n" + "=".repeat(64));
