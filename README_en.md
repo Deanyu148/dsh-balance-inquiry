@@ -87,7 +87,7 @@ Open **Settings → Balance Inquiry** (level 1):
 | Organization ID / Project ID | Appear for "Zhipu GLM Team", sent as the `bigmodel-organization` / `bigmodel-project` headers |
 | AccessKey ID / SecretAccessKey | Appear for "Volcengine Ark", used for OpenAPI signing (these are not inference API keys) |
 | Website | Opened by left-clicking a board card; when empty, the endpoint is used instead |
-| Provider ID | Binds this plan to a DSH provider id (the dropdown lists every available value). The official login is `deepseek-official` (API key), the account login is `deepseek-account`, and a custom provider is an `llm-pi-ai` route id from `cordis.patch.yml` (e.g. `cotton-api`). When you switch to that provider in DSH, the bottom-left entry shows this plan's balance; "Not set" always follows the most critical plan |
+| Provider ID | Binds this plan to a DSH provider id (the dropdown lists every available value). The official API key is `deepseek-official`, the official account login is `deepseek-account`, and a custom provider is an `llm-pi-ai` route id from `cordis.patch.yml` (e.g. `cotton-api`). When you switch to that provider in DSH, the bottom-left entry shows this plan's balance; "Not set" always follows the most critical plan |
 | Conversion rate / currency unit | **Only shown for New API and custom scripts**. Plans billed in credits / points never show it |
 | Custom script | Appears for "Custom script", next to "Fill New API template" / "Fill generic template" buttons |
 | Auto refresh interval | **Minutes**, 0 = never query automatically; default 5 (global setting) |

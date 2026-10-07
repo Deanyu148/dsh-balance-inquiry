@@ -74,7 +74,7 @@ dsh plugin --profile desktop add dsh-balance-inquiry
 | 组织 ID / 项目 ID | 选「智谱 GLM 团队版」时出现，分别作为 `bigmodel-organization` / `bigmodel-project` 请求头发送 |
 | AccessKey ID / SecretAccessKey | 选「火山方舟」时出现，用于 OpenAPI 签名（不是推理用的 API Key） |
 | 官网地址 | 看板卡片左键打开的网址；留空则改用接口地址 |
-| 供应商ID | 绑定当前套餐到 DSH 的某个 provider id（下拉里列出全部可选值）。官方登录是 `deepseek-official`（API Key）、账号登录是 `deepseek-account`，自定义供应商是 `cordis.patch.yml` 里 `llm-pi-ai` 路由的 id（如 `cotton-api`）。在 DSH 里切换到该供应商时，左下角自动显示这个套餐的余额；选「不设置」则始终按最紧急额度展示 |
+| 供应商ID | 绑定当前套餐到 DSH 的某个 provider id（下拉里列出全部可选值）。官方 API Key 是 `deepseek-official`、官方账号登录是 `deepseek-account`，自定义供应商是 `cordis.patch.yml` 里 `llm-pi-ai` 路由的 id（如 `cotton-api`）。在 DSH 里切换到该供应商时，左下角自动显示这个套餐的余额；选「不设置」则始终按最紧急额度展示 |
 | 额度换算比例 / 货币单位 | **只有 New API 与自定义脚本显示**；按积分 / credits 计的套餐不显示 |
 | 自定义脚本 | 选「自定义脚本」时出现，旁边有「填入 New API 模板 / 通用模板」按钮 |
 | 自动刷新间隔 | **分钟**，0 = 不自动查询；默认 5 分钟（通用设置） |
