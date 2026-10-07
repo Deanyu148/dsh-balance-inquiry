@@ -155,6 +155,16 @@ async function main() {
 				return { provider: "cotton-api", model: "deepseek-v4.1-flash" };
 			}
 		},
+		/** 适配器目录：内置官方路由（settingsPath 为空）只在这里可见。 */
+		llm: {
+			listConfigurableProviders() {
+				return [
+					{ provider: "deepseek-official", displayName: "DeepSeek", settingsNs: "llm-deepseek", settingsPath: [] },
+					{ provider: "deepseek-account", displayName: "DeepSeek Account", settingsNs: "llm-deepseek-account", settingsPath: [] },
+					{ provider: "cotton-api", displayName: "Cotton API", settingsNs: "llm-pi-ai", settingsPath: ["providers", "cotton-api"] }
+				];
+			}
+		},
 		settings: {
 			describe() {
 				return [
@@ -301,6 +311,39 @@ async function main() {
 	const providersNoCookie = await call(providersRoute.handler, "GET", {}, "");
 	const providersNoCookieBody = jsonOf(providersNoCookie);
 	check("没有会话 cookie 一律拒绝 providers", providersNoCookieBody && providersNoCookieBody.ok === false, providersNoCookie.body);
+
+	// 内置官方路由的 settingsPath 是空数组，配置在各自条目里而不是 providers 映射中，
+	// 只扫设置文档就会漏掉 —— 必须从 llm.listConfigurableProviders() 里取。
+	check(
+		"列出官方登录 deepseek-official（不在设置文档里）",
+		providersBody.providers.some((p) => p.id === "deepseek-official" && p.displayName === "DeepSeek"),
+		JSON.stringify(providersBody.providers)
+	);
+	check(
+		"列出账号登录 deepseek-account（不在设置文档里）",
+		providersBody.providers.some((p) => p.id === "deepseek-account" && p.displayName === "DeepSeek Account"),
+		JSON.stringify(providersBody.providers)
+	);
+	// 自定义路由同时在目录与设置文档里，去重后只出现一次。
+	check(
+		"目录与设置文档重复的 id 只出现一次",
+		providersBody.providers.filter((p) => p.id === "cotton-api").length === 1,
+		JSON.stringify(providersBody.providers)
+	);
+	// 目录不可用时（旧运行时）退化成只扫设置文档，不能崩。
+	const savedLlm = services.llm;
+	services.llm = undefined;
+	const noCatalogBody = jsonOf(await call(providersRoute.handler, "GET", { cookie: "dsh=1" }, ""));
+	check("没有 llm 服务时退回只扫设置文档", noCatalogBody.providers.length === 1 && noCatalogBody.providers[0].id === "cotton-api", JSON.stringify(noCatalogBody.providers));
+	// 目录抛错时同样不能影响设置文档那一轮。
+	services.llm = {
+		listConfigurableProviders() {
+			throw new Error("boom");
+		}
+	};
+	const brittleBody = jsonOf(await call(providersRoute.handler, "GET", { cookie: "dsh=1" }, ""));
+	check("llm 目录抛错时仍返回设置文档里的 provider", brittleBody.providers.length === 1 && brittleBody.providers[0].id === "cotton-api", JSON.stringify(brittleBody.providers));
+	services.llm = savedLlm;
 
 	console.log("\n" + "=".repeat(64));
 	console.log((failures === 0 ? "全部通过" : "存在失败") + "：" + (total - failures) + "/" + total + " 项断言通过");

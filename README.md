@@ -33,7 +33,9 @@
 - New API 默认 `GET {baseUrl}/api/user/self`，显示值 = `data.quota ÷ 换算比例`
   （默认 500000，也就是 1 ￥ = 500000 quota）；**按积分 / credits 计的套餐不显示换算比例**。
 - **没有「自动识别」**：厂商由套餐显式指定，接口地址不再参与判断。
-- **切换模型供应商自动联动**：套餐支持绑定 DSH `cordis.patch.yml` 中已有的 provider id。
+- **切换模型供应商自动联动**：套餐的「供应商ID」可绑定到 DSH 里任意可选的 provider：
+  **官方登录 `deepseek-official`**、**账号登录 `deepseek-account`**，以及 `cordis.patch.yml`
+  里 `llm-pi-ai` 配置的自定义路由（如 `cotton-api`）。
   当您在 DSH 中切换模型时，左下角自动感知并显示当前供应商对应套餐的余额；未匹配或未绑定时回退展示所有套餐中最紧急的一项。
 - 多套餐 / 多币种支持：侧边栏默认显示额度最少（最紧急）或当前激活供应商的那一项，鼠标悬停的 tooltip 里列出所有套餐
   （含每个套餐的各档位名称与重置时间）。
@@ -72,6 +74,7 @@ dsh plugin --profile desktop add dsh-balance-inquiry
 | 组织 ID / 项目 ID | 选「智谱 GLM 团队版」时出现，分别作为 `bigmodel-organization` / `bigmodel-project` 请求头发送 |
 | AccessKey ID / SecretAccessKey | 选「火山方舟」时出现，用于 OpenAPI 签名（不是推理用的 API Key） |
 | 官网地址 | 看板卡片左键打开的网址；留空则改用接口地址 |
+| 供应商ID | 绑定当前套餐到 DSH 的某个 provider id（下拉里列出全部可选值）。官方登录是 `deepseek-official`（API Key）、账号登录是 `deepseek-account`，自定义供应商是 `cordis.patch.yml` 里 `llm-pi-ai` 路由的 id（如 `cotton-api`）。在 DSH 里切换到该供应商时，左下角自动显示这个套餐的余额；选「不关联」则始终按最紧急额度展示 |
 | 额度换算比例 / 货币单位 | **只有 New API 与自定义脚本显示**；按积分 / credits 计的套餐不显示 |
 | 自定义脚本 | 选「自定义脚本」时出现，旁边有「填入 New API 模板 / 通用模板」按钮 |
 | 自动刷新间隔 | **分钟**，0 = 不自动查询；默认 5 分钟（通用设置） |

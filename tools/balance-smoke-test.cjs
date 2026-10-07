@@ -181,27 +181,79 @@ function check(name, condition, detail) {
 //#endregion
 
 //#region 假的 React / DOM
+/**
+ * 元素上挂的「这个元素归哪个 React 实例所有」。用 symbol 是为了让 findAll / render /
+ * JSON.stringify 这些只看 type / props / children 的地方完全看不见它。
+ */
+const REACT_OWNER = Symbol("dsh-smoke-test-react-owner");
+
+/**
+ * 迷你 React：只实现 bundle 用到的那部分。
+ *
+ * 关键点是 **状态要跨渲染存活**：组件在测试里是通过反复调用 Component(props) 渲染的，
+ * 如果 useState 每次返回初始值，任何「在 effect 里异步取回数据再 setState」的界面
+ * （例如编辑页的 DSH 供应商下拉）就永远看不到结果 —— 测试会以为功能坏了。
+ * 这里按「组件路径 + 第几个 hook」把状态存在实例里，等价于真实 React 的
+ * 「同一个已挂载组件」语义；每个 bootstrap 环境都有自己的一份。
+ */
 function makeReact() {
-	return {
+	/** key → 当前状态值。 */
+	const hookStore = new Map();
+	/** key → { deps, cleanup }，用于按依赖决定是否重跑 effect。 */
+	const effectStore = new Map();
+	/** 当前正在渲染的组件帧。 */
+	let frame = null;
+	/** 本轮渲染里各组件名出现的次数，用来拼出稳定的组件路径。 */
+	let counts = new Map();
+
+	const owner = {
 		createElement(type, props, ...children) {
-			return { type, props: props || {}, children };
+			const element = { type, props: props || {}, children };
+			element[REACT_OWNER] = owner;
+			return element;
+		},
+		/** 每次顶层 render 开始时重置组件计数（状态本身不回退）。 */
+		beginPass() {
+			counts = new Map();
+		},
+		enter(type) {
+			const name = (type && (type.displayName || type.name)) || "Component";
+			const seen = counts.get(name) || 0;
+			counts.set(name, seen + 1);
+			const parent = frame;
+			frame = { path: (parent ? parent.path : "") + "/" + name + "#" + seen, index: 0 };
+			return parent;
+		},
+		exit(parent) {
+			frame = parent;
 		},
 		useState(init) {
-			let value = typeof init === "function" ? init() : init;
+			const key = frame.path + ":" + frame.index++;
+			if (!hookStore.has(key)) hookStore.set(key, typeof init === "function" ? init() : init);
 			return [
-				value,
+				hookStore.get(key),
 				(next) => {
-					value = typeof next === "function" ? next(value) : next;
+					hookStore.set(key, typeof next === "function" ? next(hookStore.get(key)) : next);
 				}
 			];
 		},
-		useEffect(fn) {
-			return fn();
+		useEffect(fn, deps) {
+			const key = frame.path + ":" + frame.index++;
+			const previous = effectStore.get(key);
+			// 没有依赖数组：每次渲染都重跑（React 语义）。
+			if (previous && Array.isArray(deps)) {
+				const same = previous.deps.length === deps.length && deps.every((item, index) => Object.is(item, previous.deps[index]));
+				if (same) return;
+				if (typeof previous.cleanup === "function") previous.cleanup();
+			}
+			const cleanup = fn();
+			effectStore.set(key, { deps: Array.isArray(deps) ? deps : null, cleanup: typeof cleanup === "function" ? cleanup : null });
 		},
 		useSyncExternalStore(subscribe, getSnapshot) {
 			return getSnapshot();
 		}
 	};
+	return owner;
 }
 
 /** 安全取字符串：属性缺失时返回空串（断言必须给出 FAIL，而不是让测试自身抛 TypeError）。 */
@@ -231,18 +283,35 @@ function textOf(node) {
 	return out;
 }
 
+/** 当前是否处在一次顶层 render 之内（用于只在顶层重置组件计数）。 */
+let renderDepth = 0;
+
 /** 展开函数组件（插槽注册的是包装组件，真正的 DOM 元素在它下面一层）。 */
 function render(node) {
 	if (node === null || node === undefined || typeof node !== "object") return node;
 	if (Array.isArray(node)) return node.map(render);
-	if (typeof node.type === "function") {
-		const props = Object.assign({}, node.props);
-		if (Array.isArray(node.children) && node.children.length > 0) {
-			props.children = node.children.length === 1 ? node.children[0] : node.children;
+	const react = node[REACT_OWNER];
+	const outermost = react && renderDepth === 0;
+	if (outermost) react.beginPass();
+	if (react) renderDepth += 1;
+	try {
+		if (typeof node.type === "function") {
+			const props = Object.assign({}, node.props);
+			if (Array.isArray(node.children) && node.children.length > 0) {
+				props.children = node.children.length === 1 ? node.children[0] : node.children;
+			}
+			// 进入组件帧：hook 状态按「组件路径 + hook 序号」定位，跨渲染存活。
+			const parent = react ? react.enter(node.type) : null;
+			try {
+				return render(node.type(props));
+			} finally {
+				if (react) react.exit(parent);
+			}
 		}
-		return render(node.type(props));
+		return Object.assign({}, node, { children: Array.isArray(node.children) ? node.children.map(render) : node.children });
+	} finally {
+		if (react) renderDepth -= 1;
 	}
-	return Object.assign({}, node, { children: Array.isArray(node.children) ? node.children.map(render) : node.children });
 }
 
 function findAll(node, predicate, found) {
@@ -1586,6 +1655,54 @@ async function main() {
 	// 验证 normalizeAccount 会保留 dshProviderId
 	const norm = internals.normalizeAccount({ id: "t1", dshProviderId: "cotton-api" });
 	check("normalizeAccount 规范化包含 dshProviderId", norm.dshProviderId === "cotton-api", JSON.stringify(norm));
+
+	// ---- 「供应商ID」字段：下拉来自宿主 providers 路由，且文案必须已翻译 ----
+	// 内联字典漏键时界面会把原始键名（form.dshProvider…）直接显示出来，这里盯住这个回归。
+	const HOST_PROVIDERS = [
+		{ id: "deepseek-official", displayName: "DeepSeek" },
+		{ id: "deepseek-account", displayName: "DeepSeek Account" },
+		{ id: "cotton-api", displayName: "Cotton API" }
+	];
+	const providerListCalls = [];
+	/** 服务 providers 路由与其它请求的 fetch。 */
+	const providersFetch = async (url) => {
+		const text = String(url);
+		if (text.includes("/plugins/dsh-balance-inquiry/providers")) {
+			providerListCalls.push(text);
+			return json({ ok: true, providers: HOST_PROVIDERS });
+		}
+		if (text.includes("/plugins/dsh-balance-inquiry/whoami")) return json({ ok: true, current: { provider: "cotton-api", model: "deepseek-v4.1-flash" } });
+		return json(newApiBody());
+	};
+	const providerEnv = bootstrap({
+		storage: { "dsh-balance-inquiry:config": JSON.stringify(CONFIG) },
+		fetch: providersFetch
+	});
+	await tick(30);
+	editPageOf(providerEnv);
+	// 供应商列表是编辑页挂载后异步取回的：等 promise 落定再重渲染一次（hook 状态跨渲染存活）。
+	await tick(30);
+	const providerPage = pageTree(providerEnv);
+	const providerField = fieldOf(providerPage, "供应商ID");
+	check("字段标题是「供应商ID」", Boolean(providerField), textOf(providerPage).slice(0, 120));
+	check("界面里没有未翻译的 form.dshProvider 原始键", textOf(providerPage).indexOf("form.dshProvider") === -1, textOf(providerPage).slice(0, 200));
+	check("提示文案已翻译（不是原始键）", has(textOf(providerPage), "deepseek-official"), textOf(providerPage).slice(0, 200));
+	const providerOptions = providerField ? allTags(providerField, "option") : [];
+	check("下拉含「不关联」+ 宿主返回的 3 个 provider", providerOptions.length === 4, providerOptions.length);
+	check(
+		"下拉列出官方登录 deepseek-official / deepseek-account",
+		providerOptions.some((o) => propsOf(o).value === "deepseek-official") && providerOptions.some((o) => propsOf(o).value === "deepseek-account"),
+		JSON.stringify(providerOptions.map((o) => propsOf(o).value))
+	);
+	check("provider 选项显示 displayName (id)", providerOptions.some((o) => textOf(o) === "DeepSeek (deepseek-official)"), JSON.stringify(providerOptions.map((o) => textOf(o))));
+	check("读到了宿主 providers 路由", providerListCalls.length >= 1, providerListCalls.length);
+	// 路由不可用时下拉退化成只有「不关联」，不能崩。
+	const providerDownEnv = bootstrap({ storage: { "dsh-balance-inquiry:config": JSON.stringify(CONFIG) }, fetch: async () => json({ ok: false }, 500) });
+	await tick(30);
+	editPageOf(providerDownEnv);
+	await tick(30);
+	const downField = fieldOf(pageTree(providerDownEnv), "供应商ID");
+	check("providers 路由不可用时只剩「不关联」", downField && allTags(downField, "option").length === 1, downField ? allTags(downField, "option").length : "(没有字段)");
 
 	// ---- 汇总 ----
 	console.log("\n" + "=".repeat(64));

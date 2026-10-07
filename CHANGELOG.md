@@ -2,6 +2,18 @@
 
 [**English**](./CHANGELOG_en.md) ｜ 简体中文
 
+## 0.4.5
+
+- **修复「供应商ID」下拉缺失与文案未翻译**：
+  - 下拉现在会列出 DSH 的**内置官方供应商**：`deepseek-official`（官方 API Key 登录）
+    与 `deepseek-account`（账号登录）。它们注册时 `settingsPath` 为空、配置在自己的条目里而
+    不是 `config.providers` 映射中，之前只扫设置文档所以完全看不到。
+  - provider 列表改为「适配器目录（`llm.listConfigurableProviders()`）+ 设置文档 `providers` 映射」
+    两路合并去重；目录抛错或旧运行时自动退回只扫设置文档，不影响原本能列出的自定义供应商。
+  - 字段标题改为「供应商ID」，并补上中英文字典里缺失的 `form.dshProvider*` 三条文案
+    （之前界面直接把原始键名显示出来）。
+  - 自测：新增官方路由可见性、两路去重、目录不可用/抛错退化、下拉渲染与文案回归断言。
+
 ## 0.4.4
 
 - **安全绑定与自动切换供应商**：

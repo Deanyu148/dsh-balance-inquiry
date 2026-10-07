@@ -40,7 +40,9 @@ Adds one row at the bottom of the DSH left sidebar, **above** "Context Insights"
   **Plans billed in credits / points do not show the conversion rate.**
 - **There is no "auto detect"**: the provider is specified explicitly per plan, and the
   endpoint no longer takes part in that decision.
-- **Auto Switch on Provider Change**: Plans can bind to an existing provider ID configured in DSH `cordis.patch.yml`.
+- **Auto Switch on Provider Change**: a plan's "Provider ID" can bind to any provider DSH offers:
+  the **official login `deepseek-official`**, the **account login `deepseek-account`**, and any
+  custom `llm-pi-ai` route configured in `cordis.patch.yml` (e.g. `cotton-api`).
   When switching models/providers in DSH, the bottom-left entry automatically displays the balance of the linked plan; falls back to the most critical plan when unmatched.
 - Multiple plans and multiple currencies are supported: the sidebar shows the lowest (most critical) or active plan's balance, and the hover tooltip lists every plan
   (including each plan's window names and reset times).
@@ -85,6 +87,7 @@ Open **Settings → Balance Inquiry** (level 1):
 | Organization ID / Project ID | Appear for "Zhipu GLM Team", sent as the `bigmodel-organization` / `bigmodel-project` headers |
 | AccessKey ID / SecretAccessKey | Appear for "Volcengine Ark", used for OpenAPI signing (these are not inference API keys) |
 | Website | Opened by left-clicking a board card; when empty, the endpoint is used instead |
+| Provider ID | Binds this plan to a DSH provider id (the dropdown lists every available value). The official login is `deepseek-official` (API key), the account login is `deepseek-account`, and a custom provider is an `llm-pi-ai` route id from `cordis.patch.yml` (e.g. `cotton-api`). When you switch to that provider in DSH, the bottom-left entry shows this plan's balance; choosing "None" always follows the most critical plan |
 | Conversion rate / currency unit | **Only shown for New API and custom scripts**. Plans billed in credits / points never show it |
 | Custom script | Appears for "Custom script", next to "Fill New API template" / "Fill generic template" buttons |
 | Auto refresh interval | **Minutes**, 0 = never query automatically; default 5 (global setting) |

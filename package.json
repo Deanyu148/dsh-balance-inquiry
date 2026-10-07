@@ -1,6 +1,6 @@
 {
   "name": "dsh-balance-inquiry",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "description": "多套餐余额看板：侧边栏显示剩余额度，左键打开看板看每个套餐的余额，支持原生余额接口、New API 与编程套餐（Token Plan / Coding Plan）",
   "type": "module",
   "main": "lib/index.js",
