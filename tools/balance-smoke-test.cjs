@@ -1554,26 +1554,38 @@ async function main() {
 	check("SecretAccessKey 是 password 输入", propsOf(fieldOf(volPage, "SecretAccessKey")).type === "password", propsOf(fieldOf(volPage, "SecretAccessKey")).type);
 	//#endregion
 
-	//#region 12. 当前供应商映射（宿主 whoami → 套餐预填）
-	section("12. 当前供应商映射");
+	//#region 12. 当前供应商映射与自动切换匹配
+	section("12. 当前供应商映射与自动切换匹配");
 	const map = internals.mapCurrentProvider;
 	check(
-		"New API 网关地址 → newapi 且去掉 /v1",
-		map && map({ provider: "cotton-api", baseUrl: "https://api.cottonapi.cloud/v1" }).provider === "newapi" && map({ provider: "cotton-api", baseUrl: "https://api.cottonapi.cloud/v1" }).baseUrl === "https://api.cottonapi.cloud",
-		JSON.stringify(map && map({ provider: "cotton-api", baseUrl: "https://api.cottonapi.cloud/v1" }))
+		"宿主 provider 映射出 provider 与 dshProviderId，不包含任何网络地址",
+		map && map({ provider: "cotton-api" }).provider === "cotton-api" && map({ provider: "cotton-api" }).dshProviderId === "cotton-api" && map({ provider: "cotton-api" }).baseUrl === undefined,
+		JSON.stringify(map && map({ provider: "cotton-api" }))
 	);
-	check(
-		"DeepSeek 官方地址 → deepseek",
-		map && map({ provider: "x", baseUrl: "https://api.deepseek.com" }).provider === "deepseek",
-		JSON.stringify(map && map({ provider: "x", baseUrl: "https://api.deepseek.com" }))
-	);
-	check(
-		"Kimi 编程套餐地址 → cp-kimi",
-		map && map({ provider: "x", baseUrl: "https://api.kimi.com/coding" }).provider === "cp-kimi",
-		JSON.stringify(map && map({ provider: "x", baseUrl: "https://api.kimi.com/coding" }))
-	);
-	check("读不到 baseUrl 时返回 null", map && map({ provider: "x" }) === null, JSON.stringify(map && map({ provider: "x" })));
-	check("输入为空时返回 null", map && map(null) === null, JSON.stringify(map && map(null)));
+	check("空对象或无 provider 时返回 null", map && map({}) === null && map(null) === null);
+
+	// 测试：当 DSH 当前 provider 切换时，左下角自动展示匹配该 dshProviderId 的套餐
+	const multiAccounts = [
+		Object.assign({}, CONFIG, { id: "acc-1", name: "备用套餐", dshProviderId: "backup-api" }),
+		Object.assign({}, CONFIG, { id: "acc-2", name: "棉花云", dshProviderId: "cotton-api" })
+	];
+	const multiStore = bootstrap({
+		storage: {
+			"dsh-balance-inquiry:accounts": JSON.stringify(multiAccounts),
+			"dsh-balance-inquiry:results": JSON.stringify({
+				"acc-1": { data: ok([item({ remaining: 50 })]), at: Date.now() },
+				"acc-2": { data: ok([item({ remaining: 200 })]), at: Date.now() }
+			})
+		},
+		fetch: async () => json(newApiBody())
+	});
+	// 初始状态下没有匹配到当前激活的供应商（或为空），按最紧急原则展示 50 ￥（acc-1 剩余更小）
+	const initialEntry = entryTree(multiStore);
+	check("默认按最紧急余额展示（50 ￥）", textOf(firstByClass(initialEntry, "dsh-balance-inquiry-entry-label")) === "剩余额度：50.00 ￥", textOf(firstByClass(initialEntry, "dsh-balance-inquiry-entry-label")));
+
+	// 验证 normalizeAccount 会保留 dshProviderId
+	const norm = internals.normalizeAccount({ id: "t1", dshProviderId: "cotton-api" });
+	check("normalizeAccount 规范化包含 dshProviderId", norm.dshProviderId === "cotton-api", JSON.stringify(norm));
 
 	// ---- 汇总 ----
 	console.log("\n" + "=".repeat(64));

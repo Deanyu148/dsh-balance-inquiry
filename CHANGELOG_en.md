@@ -2,6 +2,14 @@
 
 English ｜ [简体中文](./CHANGELOG.md)
 
+## 0.4.4
+
+- **Secure Provider ID Binding & Automatic Switching**:
+  - Removed sniffing/retrieving `baseURL` and sensitive network configuration in the host.
+  - Added restricted read-only route `GET /plugins/dsh-balance-inquiry/providers` to safely return configured provider IDs and display names.
+  - Accounts can link to a provider ID defined in DSH `cordis.patch.yml` (`dshProviderId`).
+  - When switching models/providers in DSH, the bottom-left sidebar entry automatically detects the switch and displays the corresponding plan's balance; falls back to the most critical plan when unmatched.
+
 ## 0.4.1
 
 - Added the English docs [`README_en.md`](./README_en.md) and

@@ -21,6 +21,7 @@ const { pathToFileURL } = require("node:url");
 const HOST_HALF = path.resolve(__dirname, "..", "lib", "index.js");
 const PROXY_PATH = "/plugins/dsh-balance-inquiry/proxy";
 const WHOAMI_PATH = "/plugins/dsh-balance-inquiry/whoami";
+const PROVIDERS_PATH = "/plugins/dsh-balance-inquiry/providers";
 
 const verbose = process.argv.indexOf("-v") !== -1 || process.argv.indexOf("--verbose") !== -1;
 
@@ -190,8 +191,9 @@ async function main() {
 	module.apply(ctx);
 	const proxyRoute = routes.find((route) => route.path === PROXY_PATH);
 	const whoamiRoute = routes.find((route) => route.path === WHOAMI_PATH);
-	check("注册了代理与 whoami 两条 exact 路由", routes.length === 2 && Boolean(proxyRoute) && Boolean(whoamiRoute) && proxyRoute.kind === "exact" && whoamiRoute.kind === "exact", JSON.stringify(routes.map((route) => route.kind + " " + route.path)));
-	check("注册了两条清理 effect", effects.length === 2, JSON.stringify(effects));
+	const providersRoute = routes.find((route) => route.path === PROVIDERS_PATH);
+	check("注册了代理、whoami、providers 三条 exact 路由", routes.length === 3 && Boolean(proxyRoute) && Boolean(whoamiRoute) && Boolean(providersRoute) && proxyRoute.kind === "exact" && whoamiRoute.kind === "exact" && providersRoute.kind === "exact", JSON.stringify(routes.map((route) => route.kind + " " + route.path)));
+	check("注册了三条清理 effect", effects.length === 3, JSON.stringify(effects));
 	const handler = proxyRoute.handler;
 	check("handler 是函数", typeof handler === "function");
 
@@ -260,19 +262,19 @@ async function main() {
 	server.close();
 	server.unref();
 
-	section("7. whoami：读出当前模型供应商（供客户端预填套餐）");
+	section("7. whoami：读出当前模型供应商（供客户端匹配与自动切换）");
 	const whoami = await call(whoamiRoute.handler, "GET", { cookie: "dsh=1" }, "");
 	const whoamiBody = jsonOf(whoami);
 	check("whoami 返回 ok", whoamiBody && whoamiBody.ok === true, whoami.body);
 	check(
-		"带出 provider / model / baseUrl",
-		whoamiBody && whoamiBody.current && whoamiBody.current.provider === "cotton-api" && whoamiBody.current.model === "deepseek-v4.1-flash" && whoamiBody.current.baseUrl === "https://api.cottonapi.cloud/v1",
+		"只带出 provider 与 model，不泄露 baseUrl 或其它网络地址",
+		whoamiBody && whoamiBody.current && whoamiBody.current.provider === "cotton-api" && whoamiBody.current.model === "deepseek-v4.1-flash" && whoamiBody.current.baseUrl === undefined,
 		JSON.stringify(whoamiBody && whoamiBody.current)
 	);
 	check("不泄露密钥字段", whoamiBody && JSON.stringify(whoamiBody).indexOf("apiKey") === -1 && JSON.stringify(whoamiBody).indexOf("sk-") === -1, whoami.body);
 	const whoamiNoCookie = await call(whoamiRoute.handler, "GET", {}, "");
 	const whoamiNoCookieBody = jsonOf(whoamiNoCookie);
-	check("没有会话 cookie 一律拒绝", whoamiNoCookieBody && whoamiNoCookieBody.ok === false, whoamiNoCookie.body);
+	check("没有会话 cookie 一律拒绝 whoami", whoamiNoCookieBody && whoamiNoCookieBody.ok === false, whoamiNoCookie.body);
 
 	// 读不到服务时给出 ok:false，而不是抛错
 	const savedModel = services.agentDefaultModel;
@@ -281,6 +283,24 @@ async function main() {
 	const whoamiEmptyBody = jsonOf(whoamiEmpty);
 	check("读不到供应商时 ok:false + 说明", whoamiEmptyBody && whoamiEmptyBody.ok === false && Boolean(whoamiEmptyBody.error), whoamiEmpty.body);
 	services.agentDefaultModel = savedModel;
+
+	section("8. providers：列出已配置的 provider 列表（供套餐绑定）");
+	const providersRes = await call(providersRoute.handler, "GET", { cookie: "dsh=1" }, "");
+	const providersBody = jsonOf(providersRes);
+	check("providers 返回 ok", providersBody && providersBody.ok === true, providersRes.body);
+	check(
+		"列出已有的 provider id 与 displayName",
+		Array.isArray(providersBody && providersBody.providers) && providersBody.providers.some((p) => p.id === "cotton-api" && p.displayName === "Cotton API"),
+		JSON.stringify(providersBody && providersBody.providers)
+	);
+	check(
+		"providers 不包含 baseURL 或 apiKey",
+		JSON.stringify(providersBody).indexOf("baseURL") === -1 && JSON.stringify(providersBody).indexOf("apiKey") === -1,
+		JSON.stringify(providersBody)
+	);
+	const providersNoCookie = await call(providersRoute.handler, "GET", {}, "");
+	const providersNoCookieBody = jsonOf(providersNoCookie);
+	check("没有会话 cookie 一律拒绝 providers", providersNoCookieBody && providersNoCookieBody.ok === false, providersNoCookie.body);
 
 	console.log("\n" + "=".repeat(64));
 	console.log((failures === 0 ? "全部通过" : "存在失败") + "：" + (total - failures) + "/" + total + " 项断言通过");

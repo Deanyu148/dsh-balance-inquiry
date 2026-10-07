@@ -40,8 +40,9 @@ Adds one row at the bottom of the DSH left sidebar, **above** "Context Insights"
   **Plans billed in credits / points do not show the conversion rate.**
 - **There is no "auto detect"**: the provider is specified explicitly per plan, and the
   endpoint no longer takes part in that decision.
-- Multiple plans and multiple currencies are supported: the sidebar shows the plan with the
-  least balance (the most urgent one), and the hover tooltip lists every plan
+- **Auto Switch on Provider Change**: Plans can bind to an existing provider ID configured in DSH `cordis.patch.yml`.
+  When switching models/providers in DSH, the bottom-left entry automatically displays the balance of the linked plan; falls back to the most critical plan when unmatched.
+- Multiple plans and multiple currencies are supported: the sidebar shows the lowest (most critical) or active plan's balance, and the hover tooltip lists every plan
   (including each plan's window names and reset times).
 - **keep-last-good**: on a transient failure (network error / timeout / 5xx / 429) the last
   successful balance keeps showing for 10 minutes, marked "Last success: …". Deterministic
@@ -51,9 +52,7 @@ Adds one row at the bottom of the DSH left sidebar, **above** "Context Insights"
   "below 10% remaining" yellow warning.
 - Requests are sent by the **DSH host process** by default, free of browser CORS limits; when
   the host route is unavailable the plugin falls back to a direct browser request.
-- When adding a plan, if the host can read the model provider DSH **is using right now**
-  (`GET /plugins/dsh-balance-inquiry/whoami`), the dialog pins a one-click
-  "Use the provider in use now" entry (provider and endpoint only — no secrets).
+- Secure boundaries: removed host sniffing of `baseURL` and external network addresses; only uses safe provider ID references.
 
 ## Install
 

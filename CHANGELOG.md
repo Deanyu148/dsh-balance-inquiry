@@ -2,6 +2,14 @@
 
 [**English**](./CHANGELOG_en.md) ｜ 简体中文
 
+## 0.4.4
+
+- **安全绑定与自动切换供应商**：
+  - 取消在宿主端嗅探/获取 `baseURL` 等敏感网络信息的行为。
+  - 宿主端新增受约束的只读路由 `GET /plugins/dsh-balance-inquiry/providers`，安全返回已配置的 provider id 与显示名称列表。
+  - 套餐支持绑定 DSH `cordis.patch.yml` 中已有的 provider id（`dshProviderId`）。
+  - 在 DSH 中切换模型/供应商时，左下角侧边栏按钮自动感知并切换为对应供应商套餐的余额；未匹配或未绑定时回退展示所有套餐中最紧急的一项。
+
 ## 0.4.1
 
 - 新增英文文档 [`README_en.md`](./README_en.md) 与 [`CHANGELOG_en.md`](./CHANGELOG_en.md)，
