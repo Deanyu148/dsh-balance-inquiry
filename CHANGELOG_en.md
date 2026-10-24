@@ -2,6 +2,25 @@
 
 English ｜ [简体中文](./CHANGELOG.md)
 
+## 0.6.0
+
+- **One plan can now bind several providers at once**:
+  - "Provider IDs" changed from a single-select dropdown to **multiple selection** through a
+    **dedicated popup**: one row per already-added provider (display name + ID), with a search box,
+    select-all-shown, clear-selection, and an "in use" badge on the current provider. Ticks only
+    edit a draft inside the popup; "OK" writes it back, while "Cancel" or Esc discards it.
+  - Bound providers render as removable chips in the form, each with its own × button, plus a
+    "Clear all" action.
+  - Matching is now "any id in the plan's list matches the current provider"; the official
+    `deepseek-official` and `deepseek-account` still match each other, and unbound plans keep
+    falling back to the most critical balance.
+  - The stored field moved from the single `dshProviderId` to the array `dshProviderIds`; old
+    configs are migrated into a one-item list on read, so upgrades never lose a binding.
+  - Self-test grew to 79 assertions: field normalization (dedupe / trim / separator splitting /
+    legacy fallback), matching, legacy migration, zh/en dictionary key parity, and a source-level
+    guard (after stripping comments, every `t("…")` key must have a translation and the form must
+    never write the single-value field again).
+
 ## 0.4.5
 
 - **Fix the missing "Provider ID" options and the untranslated labels**:

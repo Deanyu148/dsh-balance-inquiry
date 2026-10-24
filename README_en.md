@@ -40,10 +40,12 @@ Adds one row at the bottom of the DSH left sidebar, **above** "Context Insights"
   **Plans billed in credits / points do not show the conversion rate.**
 - **There is no "auto detect"**: the provider is specified explicitly per plan, and the
   endpoint no longer takes part in that decision.
-- **Auto Switch on Provider Change**: a plan's "Provider ID" can bind to any provider DSH offers:
+- **Auto Switch on Provider Change**: a plan's "Provider IDs" can bind to **several** providers DSH offers at once:
   the **official login `deepseek-official`**, the **account login `deepseek-account`**, and any
   custom `llm-pi-ai` route configured in `cordis.patch.yml` (e.g. `cotton-api`).
-  When switching models/providers in DSH, the bottom-left entry automatically displays the balance of the linked plan; falls back to the most critical plan when unmatched.
+  Binding happens in a **dedicated popup** that lists every provider you already added, with search,
+  select-all and per-row checkboxes for multiple selection.
+  When switching to any of those providers in DSH, the bottom-left entry automatically displays the balance of the linked plan; falls back to the most critical plan when unmatched.
 - Multiple plans and multiple currencies are supported: the sidebar shows the lowest (most critical) or active plan's balance, and the hover tooltip lists every plan
   (including each plan's window names and reset times).
 - **keep-last-good**: on a transient failure (network error / timeout / 5xx / 429) the last
@@ -87,7 +89,7 @@ Open **Settings → Balance Inquiry** (level 1):
 | Organization ID / Project ID | Appear for "Zhipu GLM Team", sent as the `bigmodel-organization` / `bigmodel-project` headers |
 | AccessKey ID / SecretAccessKey | Appear for "Volcengine Ark", used for OpenAPI signing (these are not inference API keys) |
 | Website | Opened by left-clicking a board card; when empty, the endpoint is used instead |
-| Provider ID | Binds this plan to a DSH provider id (the dropdown lists every available value). The official API key is `deepseek-official`, the official account login is `deepseek-account`, and a custom provider is an `llm-pi-ai` route id from `cordis.patch.yml` (e.g. `cotton-api`). When you switch to that provider in DSH, the bottom-left entry shows this plan's balance; "Not set" always follows the most critical plan |
+| Provider IDs | Binds this plan to DSH provider ids, **multiple allowed**. "Choose providers" opens a dedicated popup listing every provider you already added (the official API key is `deepseek-official`, the official account login is `deepseek-account`, and a custom provider is an `llm-pi-ai` route id from `cordis.patch.yml`, e.g. `cotton-api`), with search, select-all and per-row checkboxes. When you switch to any of them in DSH, the bottom-left entry shows this plan's balance; with none selected it always follows the most critical plan |
 | Conversion rate / currency unit | **Only shown for New API and custom scripts**. Plans billed in credits / points never show it |
 | Custom script | Appears for "Custom script", next to "Fill New API template" / "Fill generic template" buttons |
 | Auto refresh interval | **Minutes**, 0 = never query automatically; default 5 (global setting) |
