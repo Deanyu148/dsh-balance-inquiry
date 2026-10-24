@@ -2,6 +2,25 @@
 
 [**English**](./CHANGELOG_en.md) ｜ 简体中文
 
+## 0.7.0
+
+- **配置改为宿主端 YAML 文件**（不再依赖浏览器 `localStorage`）：
+  - 配置目录是 `$DSH_HOME/dsh-balance-inquiry/`，没有 `DSH_HOME` 时退回
+    `~/.dsh/dsh-balance-inquiry/`（支持 `~` 展开、相对路径、含空格与中文的路径）。
+  - 目录里只有两个文件：`config.yml`（通用设置、套餐列表、最近读数）与
+    `credentials.yml`（每个套餐的密钥，按套餐 id 分组）。密钥单独成文件，`config.yml`
+    可以放心分享。套餐删光后 `credentials.yml` 会自动删除，不留空文件。
+  - 宿主端新增受会话 cookie 保护的 `GET / POST /plugins/dsh-balance-inquiry/config`，
+    写入是原子的（先写 `.tmp` 再改名），坏文件只记进 `errors` 不炸进程。
+  - 升级后第一次读取会把旧的三个 JSON 分片（`settings.json` / `accounts.json` /
+    `results.json`）自动合并成 YAML 并删除旧文件；`localStorage` 降级为纯浏览器环境的兜底，
+    首次运行仍会把老数据搬进文件。
+  - 内置极简 YAML 读写器（`lib/yaml.js`，零运行时依赖）：块状映射 / 序列 / 多行块标量 /
+    注释 / 文档头 / CRLF / BOM 都能读，锚点与别名这类不支持的语法会明确报错而不是静默读错。
+  - 设置页底部新增「配置存储」，显示当前实际使用的目录。
+  - 自测新增 156 项配置断言（路径解析、两个文件的内容与密钥分离、局部写入、旧 JSON 迁移、
+    类型校验、坏 YAML 容错、HTTP 路由的 403/405/400/204、以及 YAML 读写器本身的往返与边界）。
+
 ## 0.6.0
 
 - **一个套餐可同时绑定多个供应商**：

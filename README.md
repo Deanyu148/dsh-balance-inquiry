@@ -81,9 +81,21 @@ dsh plugin --profile desktop add dsh-balance-inquiry
 | 自动刷新间隔 | **分钟**，0 = 不自动查询；默认 5 分钟（通用设置） |
 | 请求超时 | 秒，2–30，默认 10（通用设置） |
 
-配置存在渲染进程的 `localStorage`：套餐列表在 `dsh-balance-inquiry:accounts`，
-通用设置在 `dsh-balance-inquiry:settings`，每个套餐最近一次读数在 `dsh-balance-inquiry:results`，
-所以重启后看板会立刻显示上次的余额，不用等第一次请求。
+配置存在 DSH 主目录下的两个 YAML 文件里（默认 `$DSH_HOME/dsh-balance-inquiry/`，
+没设置 `DSH_HOME` 时退回 `~/.dsh/dsh-balance-inquiry/`）：
+
+| 文件 | 内容 |
+| --- | --- |
+| `config.yml` | 通用设置、套餐列表（**不含**任何密钥）、每个套餐最近一次读数 |
+| `credentials.yml` | 每个套餐的密钥，按套餐 id 分组：访问令牌、用户 ID、组织 / 项目 ID、AccessKey 等 |
+
+拆成两个文件是为了让 `config.yml` 可以放心分享或提交到仓库，密钥单独收好即可。
+两个文件都是普通 YAML，可以直接用编辑器改；插件每次写入都是「先写 `.tmp` 再改名」的原子写，
+不会因为中途崩溃留下半个文件。目录里只有这两个文件，没有别的。
+
+老版本（0.6.0 及以前）把配置放在渲染进程的 `localStorage`（`dsh-balance-inquiry:accounts` /
+`:settings` / `:results`），升级后第一次打开会自动搬到 `config.yml`，之后 `localStorage`
+只在宿主路由不可用（纯浏览器环境）时作为兜底。设置页底部会显示当前实际使用的目录。
 
 ## 各供应商的端点
 
@@ -210,17 +222,20 @@ dsh-balance-inquiry/
 ├── README.md           # 中文说明
 ├── README_en.md        # 英文说明
 ├── NOTICE.md           # 许可证与版权说明
-├── tools/              # 安装 / 自测脚本（不会随安装复制进 profile）
-│   ├── install-balance-plugin.cjs      # 复制包目录 + 补 profile 清单
-│   ├── register-profile-bundle.cjs     # 只把包名登记进 dsh.profile.bundles
-│   ├── balance-smoke-test.cjs          # 客户端 bundle 自测
-│   ├── balance-host-proxy-test.cjs     # 宿主代理自测
-│   ├── verify-balance-install.cjs      # 装机校验（源目录 / 装机目录逐文件比对）
-│   └── sync-balance-locale.cjs         # 把 client.js 里的文案同步到 locale/*.json
+├── scripts/            # 维护脚本（不会随安装复制进 profile）
+│   ├── publish.mjs              # 发布前检查 + npm publish
+│   └── sync-locale.mjs          # 把 client.js 里的文案同步到 locale/*.json
+├── *.mjs               # 自测（npm test 依次跑这五个）
+│   ├── selftest.mjs             # 文案键一致性 + 字段归一化 + 匹配逻辑
+│   ├── dialog_test.mjs          # 弹窗行为
+│   ├── render_test.mjs          # 侧边栏 / 看板渲染结构
+│   ├── form_test.mjs            # 设置页表单
+│   └── config_test.mjs          # 配置文件路径、读写、迁移与 /config 路由
 └── lib/
-    ├── index.js        # 宿主半边：/plugins/dsh-balance-inquiry/proxy 代理路由（Node 侧发请求，无 CORS）
+    ├── index.js        # 宿主半边：proxy / whoami / providers / config 四个路由
     ├── index.d.ts
-    └── client.js       # 全部功能：侧边栏条目 + 设置页 + 查询引擎 + 代理优先 / 直连回落
+    ├── yaml.js         # 极简 YAML 读写（零依赖）
+    └── client.js       # 全部界面与查询逻辑：侧边栏条目 + 设置页 + 查询引擎 + 代理优先 / 直连回落
 ```
 
 版本变更见 [`CHANGELOG.md`](./CHANGELOG.md)（中文）· [`CHANGELOG_en.md`](./CHANGELOG_en.md)（English）。

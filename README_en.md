@@ -95,10 +95,25 @@ Open **Settings → Balance Inquiry** (level 1):
 | Auto refresh interval | **Minutes**, 0 = never query automatically; default 5 (global setting) |
 | Request timeout | Seconds, 2–30, default 10 (global setting) |
 
-Configuration lives in the renderer's `localStorage`: the plan list in
-`dsh-balance-inquiry:accounts`, global settings in `dsh-balance-inquiry:settings`, and each
-plan's latest reading in `dsh-balance-inquiry:results`. After a restart the board therefore
-shows the previous balances immediately without waiting for the first request.
+Configuration lives in two YAML files under the DSH home directory (default
+`$DSH_HOME/dsh-balance-inquiry/`, falling back to `~/.dsh/dsh-balance-inquiry/` when
+`DSH_HOME` is unset):
+
+| File | Contents |
+| --- | --- |
+| `config.yml` | Global settings, the plan list (**no** secrets), and each plan's latest reading |
+| `credentials.yml` | Per-plan secrets keyed by plan id: access token, user id, organization / project id, access key, … |
+
+Splitting the two keeps `config.yml` safe to share or commit, with the secrets kept apart.
+Both files are plain YAML and can be edited by hand; every write is atomic (write `.tmp`,
+then rename), so a crash mid-write never leaves a half-written file. Those two are the only
+files in the directory.
+
+Older versions (0.6.0 and earlier) kept everything in the renderer's `localStorage`
+(`dsh-balance-inquiry:accounts` / `:settings` / `:results`). On the first launch after
+upgrading, that data is migrated into `config.yml`; afterwards `localStorage` is only a
+fallback for when the host route is unavailable (plain browser environment). The settings
+page shows the directory actually in use.
 
 ## Provider endpoints
 
@@ -238,16 +253,19 @@ dsh-balance-inquiry/
 ├── README.md           # Chinese README
 ├── README_en.md        # English README
 ├── NOTICE.md           # license and copyright notice
-├── tools/              # install / self-test scripts (not copied into the profile)
-│   ├── install-balance-plugin.cjs      # copy the package dir + patch the profile manifest
-│   ├── register-profile-bundle.cjs     # register the package name in dsh.profile.bundles
-│   ├── balance-smoke-test.cjs          # client bundle self-test
-│   ├── balance-host-proxy-test.cjs     # host proxy self-test
-│   ├── verify-balance-install.cjs      # install check (file-by-file diff source vs. installed)
-│   └── sync-balance-locale.cjs         # sync the strings in client.js to locale/*.json
+├── scripts/            # maintenance scripts (not copied into the profile)
+│   ├── publish.mjs              # pre-publish checks + npm publish
+│   └── sync-locale.mjs          # sync the strings in client.js to locale/*.json
+├── *.mjs               # self-tests (npm test runs these five in order)
+│   ├── selftest.mjs             # locale key parity + field normalization + matching logic
+│   ├── dialog_test.mjs          # dialog behaviour
+│   ├── render_test.mjs          # sidebar / board render structure
+│   ├── form_test.mjs            # settings form
+│   └── config_test.mjs          # config paths, read/write, migration, /config route
 └── lib/
-    ├── index.js        # host half: /plugins/dsh-balance-inquiry/proxy (fetch from Node, no CORS)
+    ├── index.js        # host half: proxy / whoami / providers / config routes
     ├── index.d.ts
+    ├── yaml.js         # minimal YAML reader/writer (zero dependencies)
     └── client.js       # everything else: sidebar entry + settings page + query engine + host-first with browser fallback
 ```
 

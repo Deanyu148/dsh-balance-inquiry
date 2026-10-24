@@ -1,6 +1,6 @@
 {
   "name": "dsh-balance-inquiry",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "多套餐余额看板：侧边栏显示剩余额度，左键打开看板看每个套餐的余额，支持原生余额接口、New API 与编程套餐（Token Plan / Coding Plan）",
   "type": "module",
   "main": "lib/index.js",
@@ -12,7 +12,7 @@
     "access": "public"
   },
   "scripts": {
-    "test": "node selftest.mjs && node dialog_test.mjs && node render_test.mjs && node form_test.mjs",
+    "test": "node selftest.mjs && node dialog_test.mjs && node render_test.mjs && node form_test.mjs && node config_test.mjs",
     "publish:dry": "node scripts/publish.mjs",
     "publish:npm": "node scripts/publish.mjs --yes"
   },
@@ -51,6 +51,7 @@
     "lib/client.js",
     "lib/index.js",
     "lib/index.d.ts",
+    "lib/yaml.js",
     "cordis.patch.yml",
     "README.md",
     "README_en.md",

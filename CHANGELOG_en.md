@@ -2,6 +2,31 @@
 
 English ｜ [简体中文](./CHANGELOG.md)
 
+## 0.7.0
+
+- **Configuration moved to host-side YAML files** (no longer relies on browser `localStorage`):
+  - The config directory is `$DSH_HOME/dsh-balance-inquiry/`, falling back to
+    `~/.dsh/dsh-balance-inquiry/` when `DSH_HOME` is unset (`~` expansion, relative paths, and
+    paths containing spaces or non-ASCII characters all work).
+  - The directory holds exactly two files: `config.yml` (global settings, plan list, latest
+    readings) and `credentials.yml` (per-plan secrets keyed by plan id). Keeping secrets apart
+    makes `config.yml` safe to share; `credentials.yml` is removed automatically once no plan
+    needs it, so no empty file is left behind.
+  - New host route `GET / POST /plugins/dsh-balance-inquiry/config`, guarded by the session
+    cookie. Writes are atomic (write `.tmp`, then rename) and a corrupt file is reported in
+    `errors` instead of crashing the process.
+  - On the first read after upgrading, the old three JSON shards (`settings.json` /
+    `accounts.json` / `results.json`) are merged into YAML and deleted; `localStorage` becomes a
+    fallback for plain browser environments and is still migrated into the files once.
+  - Ships a minimal in-repo YAML reader/writer (`lib/yaml.js`, zero runtime dependencies): block
+    mappings and sequences, multi-line block scalars, comments, document markers, CRLF and BOM all
+    parse; unsupported syntax such as anchors and aliases raises a clear error instead of being
+    silently misread.
+  - The settings page gained a "Configuration storage" section showing the directory in use.
+  - 156 new self-test assertions cover path resolution, the two files and their secret split,
+    partial writes, legacy JSON migration, type validation, corrupt-YAML tolerance, the HTTP
+    route (403 / 405 / 400 / 204), and the YAML reader/writer's own round trips and edge cases.
+
 ## 0.6.0
 
 - **One plan can now bind several providers at once**:
