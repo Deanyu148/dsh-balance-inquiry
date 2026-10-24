@@ -1,0 +1,4 @@
+# dsh-balance-inquiry：左侧边栏「剩余额度」按钮 + 设置页
+- insert:
+    - id: dsh-balance-inquiry
+      name: dsh-balance-inquiry
